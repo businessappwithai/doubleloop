@@ -1,0 +1,27 @@
+{
+  "version": "2",
+  "tasks": {
+    "typecheck": {
+      "outputs": [],
+      "cache": false
+    },
+    "lint": {
+      "outputs": [],
+      "cache": false
+    },
+    "test": {
+      "outputs": ["coverage/**"],
+      "cache": false
+    },
+    "build": {
+      "outputs": ["dist/**", "build/**"],
+      "inputs": ["src/**", "tsconfig.json", "tsup.config.ts"],
+      "cache": true
+    },
+    "dev": {
+      "outputs": [],
+      "cache": false
+    }
+  },
+  "globalDependencies": ["tsconfig.base.json", "eslint.config.js"]
+}

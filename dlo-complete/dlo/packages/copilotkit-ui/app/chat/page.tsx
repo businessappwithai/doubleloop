@@ -1,0 +1,1000 @@
+/**
+ * packages/copilotkit-ui/app/chat/page.tsx
+ * Main chat interface using CopilotKit with dynamic agent configuration settings.
+ */
+
+"use client";
+
+import { useEffect, useState } from "react";
+import { CopilotChat } from "@copilotkit/react-ui";
+import {
+  useCopilotReadable,
+  useCopilotAction,
+  CopilotKit,
+} from "@copilotkit/react-core";
+import "@copilotkit/react-ui/styles.css";
+import { useDloStore } from "@/lib/store";
+import { createDloClient } from "@/lib/dlo-client";
+import { format } from "date-fns";
+import { Activity, AlertCircle, CheckCircle, Clock, Zap, Settings, X } from "lucide-react";
+
+/**
+ * Inner component that uses the DLO store and CopilotKit hooks.
+ * Wrapped by CopilotKit in the page component below.
+ */
+function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
+  const store = useDloStore();
+  const setClient = useDloStore((state) => state.setClient);
+  const [daemonUrl, setDaemonUrl] = useState("http://localhost:8090");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setDaemonUrl(process.env.NEXT_PUBLIC_DLO_DAEMON_URL || window.location.origin);
+    }
+  }, []);
+  const [isConnected, setIsConnected] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testResults, setTestResults] = useState<any>(null);
+  const [config, setConfig] = useState({
+    copilotModel: "gemini-1.5-pro",
+    providers: {
+      research: { apiKey: "", vendor: "gemini-deep-research" as const, model: "deep-research-preview-04-2026" as string },
+      planner: { apiKey: "", vendor: "claude-code" as const, model: "claude-3-5-sonnet-latest" as string },
+      supervisor: { apiKey: "", vendor: "claude-code" as const, model: "claude-3-5-sonnet-latest" as string },
+      executor: { apiKey: "", vendor: "codewhale" as const, model: "deepseek-coder" as string, maxConcurrent: 8 },
+      harness: { apiKey: "", vendor: "pi" as const, model: "pi-default-model" as string, sdkPackage: "@earendil-works/pi-coding-agent" as const, subagentsExtension: "@gotgenes/pi-subagents" as const }
+    },
+    budgets: { usd: 100, tokens: 10000000, wallClockMs: 3600000 }
+  });
+
+  const runConfigTest = async (currentConfig: typeof config) => {
+    setIsTesting(true);
+    setTestResults(null);
+    try {
+      const res = await fetch("/api/test-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: currentConfig }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTestResults(data.results);
+      } else {
+        setTestResults({ error: data.error || "Failed to run verification." });
+      }
+    } catch (e: any) {
+      setTestResults({ error: e.message || "Failed to contact verification API." });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  // Initialize DLO client on mount
+  useEffect(() => {
+    const client = createDloClient(daemonUrl);
+    setClient(client);
+    setIsConnected(true);
+  }, [daemonUrl, setClient]);
+
+  // Load configuration from local storage
+  useEffect(() => {
+    const stored = localStorage.getItem("dlo-config");
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        setConfig((prev) => {
+          const merged = { ...prev, ...parsed };
+          merged.providers = {
+            research: { ...prev.providers.research, ...(parsed.providers?.research || {}) },
+            planner: { ...prev.providers.planner, ...(parsed.providers?.planner || {}) },
+            supervisor: { ...prev.providers.supervisor, ...(parsed.providers?.supervisor || {}) },
+            executor: { ...prev.providers.executor, ...(parsed.providers?.executor || {}) },
+            harness: { ...prev.providers.harness, ...(parsed.providers?.harness || {}) },
+          };
+          merged.budgets = { ...prev.budgets, ...(parsed.budgets || {}) };
+          return merged;
+        });
+      } catch (e) {
+        console.error("Failed to load stored configuration:", e);
+      }
+    }
+  }, []);
+
+  const saveConfig = (newConfig: typeof config) => {
+    setConfig(newConfig);
+    localStorage.setItem("dlo-config", JSON.stringify(newConfig));
+    setShowSettings(false);
+    if (onConfigSave) {
+      onConfigSave();
+    }
+  };
+
+  // 1. Initialize Pipeline Action
+  useCopilotAction({
+    name: "initialize_pipeline",
+    description: "Initialize a new DLO pipeline with the given configuration",
+    parameters: [
+      { name: "projectName", type: "string", description: "Name of the project", required: true },
+      { name: "objectivesMarkdown", type: "string", description: "Project objectives as markdown", required: true },
+      { name: "workspaceDir", type: "string", description: "Workspace directory path", required: true },
+    ],
+    handler: async (input: any) => {
+      let activeConfig = { ...config };
+      if (typeof window !== "undefined") {
+        try {
+          const stored = localStorage.getItem("dlo-config");
+          if (stored) activeConfig = JSON.parse(stored);
+        } catch (err) {
+          console.error("Failed to parse stored config:", err);
+        }
+      }
+      await store.initPipeline({
+        projectName: input.projectName,
+        objectivesMarkdown: input.objectivesMarkdown,
+        workspaceDir: input.workspaceDir,
+        config: activeConfig,
+      });
+      return `Pipeline initialized! ID: ${store.activePipelineId}`;
+    },
+  });
+
+  // 2. Get Pipeline Status Action
+  useCopilotAction({
+    name: "get_pipeline_status",
+    description: "Get the current status of the active pipeline",
+    parameters: [],
+    handler: async () => {
+      const client = store.client;
+      const pipelineId = store.activePipelineId;
+      if (!client || !pipelineId) {
+        return { error: "No active pipeline. Initialize one first." };
+      }
+      return client.getPipelineStatus(pipelineId);
+    },
+  });
+
+  // 3. Resolve Gate Action
+  useCopilotAction({
+    name: "resolve_gate",
+    description: "Resolve an open HITL gate with a decision",
+    parameters: [
+      { name: "decision", type: "string", description: "APPROVE, STEER, or REJECT", required: true },
+      { name: "instructions", type: "string", description: "For STEER: detailed instructions for revision", required: false },
+      { name: "reason", type: "string", description: "For REJECT: reason for rejection", required: false },
+      { name: "note", type: "string", description: "Optional note", required: false },
+    ],
+    handler: async (input: any) => {
+      const status = store.pipelineStatus;
+      if (!status?.activeGate) {
+        return { error: "No active gate to resolve" };
+      }
+      await store.resolveGate(status.activeGate.gateId, input.decision, {
+        instructions: input.instructions,
+        reason: input.reason,
+        note: input.note,
+      });
+      return `Gate resolved with decision: ${input.decision}`;
+    },
+  });
+
+  // 4. Get Domain Document Action
+  useCopilotAction({
+    name: "get_domain_document",
+    description: "Get the domain research document",
+    parameters: [],
+    handler: async () => {
+      const status = store.pipelineStatus;
+      if (!status?.domainDocument) {
+        return { error: "Domain document not yet available" };
+      }
+      return {
+        markdown: status.domainDocument.markdown,
+        citations: status.domainDocument.citations,
+      };
+    },
+  });
+
+  // 5. Get Plan Action
+  useCopilotAction({
+    name: "get_plan",
+    description: "Get the strategic plan (CEO, Architecture, or Engineering)",
+    parameters: [
+      { name: "kind", type: "string", description: "ceo, architecture, or engineering", required: true },
+    ],
+    handler: async (input: any) => {
+      const status = store.pipelineStatus;
+      if (!status?.plan) {
+        return { error: "Plan not yet available" };
+      }
+      const key = `${input.kind}Plan` as "ceoPlan" | "architecturePlan" | "engineeringPlan";
+      return {
+        plan: (status.plan as any)[key],
+      };
+    },
+  });
+
+  // Make pipeline status readable to the copilot
+  useCopilotReadable({
+    description: "Current DLO pipeline status",
+    value: store.pipelineStatus
+      ? {
+          phase: store.pipelineStatus.phase,
+          board: store.pipelineStatus.board,
+          activeGate: store.pipelineStatus.activeGate,
+          budget: store.pipelineStatus.budget,
+        }
+      : { phase: "INIT", board: null, activeGate: null, budget: null },
+  });
+
+  return (
+    <div className="flex flex-col h-screen bg-gradient-to-br from-slate-900 to-slate-800">
+      {/* Header */}
+      <div className="bg-slate-950 border-b border-slate-700 p-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+              <Zap className="w-6 h-6 text-blue-400" />
+              DLO Pipeline Controller
+            </h1>
+            <p className="text-slate-400 text-sm">Autonomous development pipeline orchestrator</p>
+          </div>
+
+          <div className="flex items-center gap-4">
+            {/* Settings Button */}
+            <button
+              onClick={() => setShowSettings(true)}
+              className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded border border-slate-700 transition text-sm"
+            >
+              <Settings className="w-4 h-4" /> Config Keys & Limits
+            </button>
+
+            {/* Status indicator */}
+            {store.pipelineStatus && (
+              <div className="flex items-center gap-4">
+                <div className="bg-slate-900 rounded-lg p-3 border border-slate-700">
+                  <div className="text-xs text-slate-400 mb-1">Phase</div>
+                  <div className="text-sm font-semibold text-blue-300">
+                    {store.pipelineStatus.phase}
+                  </div>
+                </div>
+
+                {store.pipelineStatus.activeGate && (
+                  <div className="bg-amber-900 rounded-lg p-3 border border-amber-700">
+                    <div className="text-xs text-amber-200 mb-1">HITL Gate Open</div>
+                    <div className="text-sm font-semibold text-amber-100">
+                      {store.pipelineStatus.activeGate.kind}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div className="flex-1 overflow-hidden">
+        <div className="h-full grid grid-cols-3 gap-4 p-4">
+          {/* Chat */}
+          <div className="col-span-2 bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+            <CopilotChat
+              instructions="You are DLO, an autonomous development pipeline orchestrator. Help the user initialize pipelines, monitor progress, resolve HITL gates, and view generated artifacts. Be professional, concise, and always provide actionable feedback."
+              labels={{
+                title: "DLO Chat",
+                initial: "👋 Hello! I'm DLO. I can help you orchestrate autonomous development pipelines. Try saying 'initialize a new pipeline' or 'check pipeline status'.",
+                placeholder: "Ask me about your pipeline...",
+              }}
+            />
+          </div>
+
+          {/* Status panel */}
+          <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 overflow-y-auto">
+            <h2 className="text-lg font-semibold text-white mb-4">Pipeline Status</h2>
+
+            {!isConnected ? (
+              <div className="text-amber-300 flex items-start gap-2">
+                <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold">Not connected</p>
+                  <p className="text-sm text-amber-200">
+                    Ensure DLO daemon is running on {daemonUrl}
+                  </p>
+                </div>
+              </div>
+            ) : store.pipelineStatus ? (
+              <div className="space-y-4">
+                {/* Pipeline ID */}
+                <div>
+                  <p className="text-xs text-slate-400 uppercase tracking-wide">Pipeline ID</p>
+                  <p className="text-sm font-mono text-slate-200 break-all">
+                    {store.pipelineStatus.pipelineId}
+                  </p>
+                </div>
+
+                {/* Phase indicator */}
+                <div>
+                  <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Phase</p>
+                  <div className={`bg-slate-900 rounded px-3 py-2 border-l-4 ${store.pipelineStatus.phase === "FAILED" ? "border-red-500" : "border-blue-500"}`}>
+                    <p className={`text-sm font-semibold ${store.pipelineStatus.phase === "FAILED" ? "text-red-400" : "text-blue-300"}`}>
+                      {store.pipelineStatus.phase}
+                    </p>
+                    {store.pipelineStatus.phase === "FAILED" && (store.pipelineStatus as any).error && (
+                      <p className="text-xs text-red-200 mt-1 break-words font-mono">
+                        {(store.pipelineStatus as any).error}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Module board */}
+                {store.pipelineStatus.board && (
+                  <div>
+                    <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">
+                      Modules
+                    </p>
+                    <div className="space-y-1">
+                      {store.pipelineStatus.board.modules.slice(0, 5).map((mod) => (
+                        <div
+                          key={mod.moduleId}
+                          className="flex items-center gap-2 text-xs bg-slate-900 px-2 py-1 rounded"
+                        >
+                          {mod.status === "PASSED" ? (
+                            <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
+                          ) : mod.status === "EXECUTING" ? (
+                            <Activity className="w-4 h-4 text-blue-400 flex-shrink-0 animate-spin" />
+                          ) : mod.status === "REJECTED" ? (
+                            <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                          ) : (
+                            <Clock className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                          )}
+                          <span className="text-slate-300 truncate">{mod.moduleId}</span>
+                          <span className="text-slate-500 ml-auto">×{mod.attempts}</span>
+                        </div>
+                      ))}
+                      {(store.pipelineStatus.board.modules.length || 0) > 5 && (
+                        <p className="text-xs text-slate-500 px-2 py-1">
+                          +{store.pipelineStatus.board.modules.length - 5} more
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Budget */}
+                {store.pipelineStatus.budget && (
+                  <div>
+                    <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">
+                      Budget
+                    </p>
+                    <div className="space-y-1 text-xs">
+                      {Object.entries(store.pipelineStatus.budget.spent || {})
+                        .slice(0, 3)
+                        .map(([dim, spent]) => (
+                          <div key={dim} className="flex justify-between text-slate-300">
+                            <span>{dim}</span>
+                            <span className="font-mono text-amber-300">
+                              {spent} / {store.pipelineStatus?.budget?.remaining?.[dim]}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Timestamps */}
+                <div className="pt-2 border-t border-slate-700">
+                  <p className="text-xs text-slate-400">
+                    Created:{" "}
+                    <span className="text-slate-300">
+                      {format(new Date(store.pipelineStatus.createdAt), "MMM d, HH:mm:ss")}
+                    </span>
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    Updated:{" "}
+                    <span className="text-slate-300">
+                      {format(new Date(store.pipelineStatus.lastTransitionAt), "MMM d, HH:mm:ss")}
+                    </span>
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-slate-400 text-sm">Initialize a pipeline to get started.</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl transition">
+            <div className="flex items-center justify-between border-b border-slate-700 pb-4 mb-4">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Settings className="w-5 h-5 text-blue-400" />
+                Configure Keys & Limits
+              </h2>
+              <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-white transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-4 text-sm text-slate-300">
+              <p className="text-xs text-slate-400">
+                Provide credentials/keys to override default environment variables (e.g. GEMINI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY).
+              </p>
+              
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Google Gemini API Key (Deep Research)
+                </label>
+                <input
+                  type="password"
+                  placeholder="Defaults to process.env.GEMINI_API_KEY"
+                  value={config.providers.research.apiKey}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    providers: {
+                      ...config.providers,
+                      research: { ...config.providers.research, apiKey: e.target.value }
+                    }
+                  })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Gemini Research Model (Deep Research)
+                </label>
+                <select
+                  value={["deep-research-preview-04-2026", "deep-research-max-preview-04-2026"].includes(config.providers.research.model) ? config.providers.research.model : "custom"}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setConfig({
+                      ...config,
+                      providers: {
+                        ...config.providers,
+                        research: {
+                          ...config.providers.research,
+                          model: val !== "custom" ? val : "deep-research-preview-04-2026"
+                        }
+                      }
+                    });
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mb-2"
+                >
+                  <option value="deep-research-preview-04-2026">deep-research-preview-04-2026</option>
+                  <option value="deep-research-max-preview-04-2026">deep-research-max-preview-04-2026</option>
+                  <option value="custom">Custom Model Name...</option>
+                </select>
+                
+                {!["deep-research-preview-04-2026", "deep-research-max-preview-04-2026"].includes(config.providers.research.model) && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom Gemini Research model name"
+                    value={config.providers.research.model || ""}
+                    onChange={(e) => setConfig({
+                      ...config,
+                      providers: {
+                        ...config.providers,
+                        research: { ...config.providers.research, model: e.target.value }
+                      }
+                    })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mt-1"
+                  />
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Copilot Chat Model
+                </label>
+                <select
+                  value={["gemini-1.5-pro", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"].includes(config.copilotModel) ? config.copilotModel : "custom"}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val !== "custom") {
+                      setConfig({
+                        ...config,
+                        copilotModel: val
+                      });
+                    } else {
+                      setConfig({
+                        ...config,
+                        copilotModel: "gemini-2.5-flash" // custom default
+                      });
+                    }
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mb-2"
+                >
+                  <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+                  <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                  <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                  <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                  <option value="gemini-flash-latest">gemini-flash-latest</option>
+                  <option value="custom">Custom Model Name...</option>
+                </select>
+                
+                {(!["gemini-1.5-pro", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"].includes(config.copilotModel)) && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom Gemini model name"
+                    value={config.copilotModel || ""}
+                    onChange={(e) => setConfig({
+                      ...config,
+                      copilotModel: e.target.value
+                    })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mt-1"
+                  />
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Anthropic API Key (Claude Code)
+                </label>
+                <input
+                  type="password"
+                  placeholder="Defaults to process.env.ANTHROPIC_API_KEY"
+                  value={config.providers.planner.apiKey}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    providers: {
+                      ...config.providers,
+                      planner: { ...config.providers.planner, apiKey: e.target.value },
+                      supervisor: { ...config.providers.supervisor, apiKey: e.target.value }
+                    }
+                  })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mb-3"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Planner Model (Claude Code)
+                </label>
+                <select
+                  value={["claude-3-5-sonnet-latest", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-latest", "claude-3-opus-latest", "gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001"].includes(config.providers.planner.model || "") ? config.providers.planner.model : "custom"}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setConfig({
+                      ...config,
+                      providers: {
+                        ...config.providers,
+                        planner: {
+                          ...config.providers.planner,
+                          model: val !== "custom" ? val : "claude-3-5-sonnet-latest"
+                        }
+                      }
+                    });
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mb-2"
+                >
+                  <option value="claude-3-5-sonnet-latest">claude-3-5-sonnet-latest</option>
+                  <option value="claude-3-5-sonnet-20241022">claude-3-5-sonnet-20241022</option>
+                  <option value="claude-3-5-haiku-latest">claude-3-5-haiku-latest</option>
+                  <option value="claude-3-opus-latest">claude-3-opus-latest</option>
+                  <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                  <option value="gemini-2.0-flash-001">gemini-2.0-flash-001</option>
+                  <option value="gemini-2.0-flash-lite-001">gemini-2.0-flash-lite-001</option>
+                  <option value="custom">Custom Model Name...</option>
+                </select>
+                
+                {!["claude-3-5-sonnet-latest", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-latest", "claude-3-opus-latest", "gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001"].includes(config.providers.planner.model || "") && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom model name (e.g. gemini-2.0-flash-001)"
+                    value={config.providers.planner.model || ""}
+                    onChange={(e) => setConfig({
+                      ...config,
+                      providers: {
+                        ...config.providers,
+                        planner: { ...config.providers.planner, model: e.target.value }
+                      }
+                    })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mt-1"
+                  />
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Supervisor Model (Claude Code)
+                </label>
+                <select
+                  value={["claude-3-5-sonnet-latest", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-latest", "claude-3-opus-latest", "gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001"].includes(config.providers.supervisor.model || "") ? config.providers.supervisor.model : "custom"}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setConfig({
+                      ...config,
+                      providers: {
+                        ...config.providers,
+                        supervisor: {
+                          ...config.providers.supervisor,
+                          model: val !== "custom" ? val : "claude-3-5-sonnet-latest"
+                        }
+                      }
+                    });
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mb-2"
+                >
+                  <option value="claude-3-5-sonnet-latest">claude-3-5-sonnet-latest</option>
+                  <option value="claude-3-5-sonnet-20241022">claude-3-5-sonnet-20241022</option>
+                  <option value="claude-3-5-haiku-latest">claude-3-5-haiku-latest</option>
+                  <option value="claude-3-opus-latest">claude-3-opus-latest</option>
+                  <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                  <option value="gemini-2.0-flash-001">gemini-2.0-flash-001</option>
+                  <option value="gemini-2.0-flash-lite-001">gemini-2.0-flash-lite-001</option>
+                  <option value="custom">Custom Model Name...</option>
+                </select>
+                
+                {!["claude-3-5-sonnet-latest", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-latest", "claude-3-opus-latest", "gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001"].includes(config.providers.supervisor.model || "") && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom model name (e.g. gemini-2.0-flash-001)"
+                    value={config.providers.supervisor.model || ""}
+                    onChange={(e) => setConfig({
+                      ...config,
+                      providers: {
+                        ...config.providers,
+                        supervisor: { ...config.providers.supervisor, model: e.target.value }
+                      }
+                    })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mt-1"
+                  />
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  DeepSeek / CodeWhale API Key
+                </label>
+                <input
+                  type="password"
+                  placeholder="Defaults to process.env.DEEPSEEK_API_KEY"
+                  value={config.providers.executor.apiKey}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    providers: {
+                      ...config.providers,
+                      executor: { ...config.providers.executor, apiKey: e.target.value }
+                    }
+                  })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mb-3"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Executor Model (DeepSeek / CodeWhale)
+                </label>
+                <select
+                  value={["deepseek-coder", "deepseek-chat", "deepseek-reasoner"].includes(config.providers.executor.model || "") ? config.providers.executor.model : "custom"}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setConfig({
+                      ...config,
+                      providers: {
+                        ...config.providers,
+                        executor: {
+                          ...config.providers.executor,
+                          model: val !== "custom" ? val : "deepseek-coder"
+                        }
+                      }
+                    });
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mb-2"
+                >
+                  <option value="deepseek-coder">deepseek-coder</option>
+                  <option value="deepseek-chat">deepseek-chat</option>
+                  <option value="deepseek-reasoner">deepseek-reasoner</option>
+                  <option value="custom">Custom Model Name...</option>
+                </select>
+                
+                {!["deepseek-coder", "deepseek-chat", "deepseek-reasoner"].includes(config.providers.executor.model || "") && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom DeepSeek model name"
+                    value={config.providers.executor.model || ""}
+                    onChange={(e) => setConfig({
+                      ...config,
+                      providers: {
+                        ...config.providers,
+                        executor: { ...config.providers.executor, model: e.target.value }
+                      }
+                    })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mt-1"
+                  />
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  pi.dev API Key (Harness)
+                </label>
+                <input
+                  type="password"
+                  placeholder="Defaults to process.env.PI_API_KEY"
+                  value={config.providers.harness.apiKey}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    providers: {
+                      ...config.providers,
+                      harness: { ...config.providers.harness, apiKey: e.target.value }
+                    }
+                  })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mb-3"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Harness Model (pi.dev / Pi)
+                </label>
+                <select
+                  value={["pi-default-model", "pi-large-model"].includes(config.providers.harness.model || "") ? config.providers.harness.model : "custom"}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setConfig({
+                      ...config,
+                      providers: {
+                        ...config.providers,
+                        harness: {
+                          ...config.providers.harness,
+                          model: val !== "custom" ? val : "pi-default-model"
+                        }
+                      }
+                    });
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mb-2"
+                >
+                  <option value="pi-default-model">pi-default-model</option>
+                  <option value="pi-large-model">pi-large-model</option>
+                  <option value="custom">Custom Model Name...</option>
+                </select>
+                
+                {!["pi-default-model", "pi-large-model"].includes(config.providers.harness.model || "") && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom Pi model name"
+                    value={config.providers.harness.model || ""}
+                    onChange={(e) => setConfig({
+                      ...config,
+                      providers: {
+                        ...config.providers,
+                        harness: { ...config.providers.harness, model: e.target.value }
+                      }
+                    })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mt-1"
+                  />
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Pi Harness Subagents Extension
+                </label>
+                <select
+                  value={config.providers.harness.subagentsExtension}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    providers: {
+                      ...config.providers,
+                      harness: { ...config.providers.harness, subagentsExtension: e.target.value as any }
+                    }
+                  })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition"
+                >
+                  <option value="@gotgenes/pi-subagents">@gotgenes/pi-subagents</option>
+                  <option value="@tintinweb/pi-subagents">@tintinweb/pi-subagents</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                    Max Concurrent Modules
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={config.providers.executor.maxConcurrent}
+                    onChange={(e) => setConfig({
+                      ...config,
+                      providers: {
+                        ...config.providers,
+                        executor: { ...config.providers.executor, maxConcurrent: parseInt(e.target.value) || 8 }
+                      }
+                    })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                    USD Budget Limit
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={config.budgets.usd}
+                    onChange={(e) => setConfig({
+                      ...config,
+                      budgets: { ...config.budgets, usd: parseFloat(e.target.value) || 100 }
+                    })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Test Results */}
+            {isTesting && (
+              <div className="bg-slate-950/50 rounded-lg border border-slate-800 p-4 mt-4 text-center">
+                <div className="inline-block animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500 mb-2"></div>
+                <p className="text-xs text-blue-400 font-medium">Running configuration test & binary verification...</p>
+              </div>
+            )}
+
+            {testResults && (
+              <div className="bg-slate-950 rounded-lg border border-slate-800 p-4 mt-4 space-y-3">
+                <h3 className="text-sm font-semibold text-white border-b border-slate-800 pb-1 flex items-center justify-between">
+                  <span>Test Results</span>
+                  <button 
+                    onClick={() => setTestResults(null)} 
+                    className="text-xs text-slate-500 hover:text-slate-300"
+                  >
+                    Clear
+                  </button>
+                </h3>
+                {testResults.error ? (
+                  <p className="text-xs text-red-400">{testResults.error}</p>
+                ) : (
+                  <div className="space-y-2 text-xs">
+                    {/* Binaries */}
+                    <div className="space-y-1">
+                      <div className="font-semibold text-slate-400 mb-1">Binaries & Executables:</div>
+                      <div className="flex items-center justify-between">
+                        <span>Claude Code CLI:</span>
+                        <span className={testResults.binaries.claude.status === "passed" ? "text-green-400 font-medium" : "text-red-400 font-medium"}>
+                          {testResults.binaries.claude.status === "passed" ? "✓ Ready" : "✗ Missing"}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mb-2">{testResults.binaries.claude.message}</p>
+
+                      <div className="flex items-center justify-between">
+                        <span>CodeWhale Swarm CLI:</span>
+                        <span className={testResults.binaries.codewhale.status === "passed" ? "text-green-400 font-medium" : "text-red-400 font-medium"}>
+                          {testResults.binaries.codewhale.status === "passed" ? "✓ Ready" : "✗ Missing"}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mb-2">{testResults.binaries.codewhale.message}</p>
+
+                      <div className="flex items-center justify-between">
+                        <span>open-code-review CLI:</span>
+                        <span className={testResults.binaries.ocr?.status === "passed" ? "text-green-400 font-medium" : "text-red-400 font-medium"}>
+                          {testResults.binaries.ocr?.status === "passed" ? "✓ Ready" : "✗ Missing"}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-500">{testResults.binaries.ocr?.message}</p>
+                    </div>
+
+                    {/* API Keys */}
+                    <div className="space-y-2 border-t border-slate-800 pt-2">
+                      <div className="font-semibold text-slate-400 mb-1">API Key Configurations:</div>
+                      
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span>Gemini Key (Deep Research & Copilot):</span>
+                          <span className={testResults.keys.gemini.status === "passed" ? "text-green-400 font-medium" : "text-red-400 font-medium"}>
+                            {testResults.keys.gemini.status === "passed" ? "✓ Ready" : "✗ Error"}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mb-2">{testResults.keys.gemini.message}</p>
+
+                        <div className="flex items-center justify-between">
+                          <span>Claude Key (Orchestration):</span>
+                          <span className={testResults.keys.anthropic.status === "passed" ? "text-green-400 font-medium" : "text-red-400 font-medium"}>
+                            {testResults.keys.anthropic.status === "passed" ? "✓ Ready" : "✗ Error"}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mb-2">{testResults.keys.anthropic.message}</p>
+
+                        <div className="flex items-center justify-between">
+                          <span>DeepSeek Key (Execution):</span>
+                          <span className={testResults.keys.deepseek.status === "passed" ? "text-green-400 font-medium" : "text-red-400 font-medium"}>
+                            {testResults.keys.deepseek.status === "passed" ? "✓ Ready" : "✗ Error"}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mb-2">{testResults.keys.deepseek.message}</p>
+
+                        <div className="flex items-center justify-between">
+                          <span>Pi Harness Key:</span>
+                          <span className={testResults.keys.pi.status === "passed" ? "text-green-400 font-medium" : "text-red-400 font-medium"}>
+                            {testResults.keys.pi.status === "passed" ? "✓ Ready" : "✗ Error"}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500">{testResults.keys.pi.message}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 border-t border-slate-700 pt-4 mt-6">
+              <button
+                disabled={isTesting}
+                onClick={() => runConfigTest(config)}
+                className="px-4 py-2 rounded border border-slate-700 hover:border-slate-500 text-slate-200 hover:text-white font-medium transition mr-auto"
+              >
+                {isTesting ? "Testing..." : "Test Connection"}
+              </button>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="px-4 py-2 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => saveConfig(config)}
+                className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-semibold transition"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Footer */}
+      <div className="bg-slate-950 border-t border-slate-700 p-4">
+        <p className="text-xs text-slate-500 max-w-7xl mx-auto">
+          DLO v0.1.0 · Double-Loop Orchestrator for autonomous development · 🚀
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Page component with CopilotKit wrapping.
+ */
+export default function ChatPage() {
+  const [headers, setHeaders] = useState<Record<string, string>>({});
+
+  const updateHeaders = () => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("dlo-config");
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          setHeaders({
+            "x-gemini-key": parsed?.providers?.research?.apiKey || "",
+            "x-anthropic-key": parsed?.providers?.planner?.apiKey || "",
+            "x-deepseek-key": parsed?.providers?.executor?.apiKey || "",
+            "x-pi-key": parsed?.providers?.harness?.apiKey || "",
+            "x-copilot-model": parsed?.copilotModel || "gemini-1.5-pro",
+          });
+          return;
+        } catch (e) {
+          console.error("Failed to parse stored config for headers:", e);
+        }
+      }
+    }
+    setHeaders({});
+  };
+
+  useEffect(() => {
+    updateHeaders();
+    window.addEventListener("storage", updateHeaders);
+    return () => window.removeEventListener("storage", updateHeaders);
+  }, []);
+
+  return (
+    <CopilotKit runtimeUrl="/api/copilotkit" headers={headers}>
+      <DloChat onConfigSave={updateHeaders} />
+    </CopilotKit>
+  );
+}
