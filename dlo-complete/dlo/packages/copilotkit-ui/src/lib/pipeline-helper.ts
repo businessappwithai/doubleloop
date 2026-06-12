@@ -107,8 +107,25 @@ ${state.objectivesMarkdown}
 Include technical standards, architecture choices, database schema models, dependencies, and API requirements.
 Format the output strictly as Markdown. Do not include markdown code block wraps (like \`\`\`) around the whole document.`;
 
-    const result = await model.generateContent(prompt);
-    const markdown = result.response.text();
+    let markdown = "";
+    let usedModel = modelName;
+
+    // Try with the configured model first
+    try {
+      const result = await model.generateContent(prompt);
+      markdown = result.response.text();
+    } catch (err: any) {
+      // If the model doesn't support generateContent, try with gemini-2.0-flash
+      if (err.message?.includes("Interactions API") || err.message?.includes("not supported")) {
+        console.warn(`Model ${modelName} not supported for generateContent, falling back to gemini-2.0-flash`);
+        usedModel = "gemini-2.0-flash";
+        const fallbackModel = genAI.getGenerativeModel({ model: usedModel });
+        const result = await fallbackModel.generateContent(prompt);
+        markdown = result.response.text();
+      } else {
+        throw err;
+      }
+    }
 
     state.phase = "GATE1_PENDING";
     state.lastTransitionAt = new Date().toISOString();
