@@ -78,12 +78,9 @@ export async function POST(req: Request) {
 
     const copilotRuntime = new CopilotRuntime();
     return copilotRuntime.response(req, new GoogleGenerativeAIAdapter({ model }));
-  } catch (err: any) {
-    console.error("CopilotKit Runtime Error:", err);
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+  } catch (error: any) {
+    console.error("CopilotKit route error:", error);
+    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { "content-type": "application/json" } });
   }
 }
 
