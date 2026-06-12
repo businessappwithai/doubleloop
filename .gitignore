@@ -38,3 +38,4 @@ pnpm-debug.log*
 .dlo/
 .test-tmp/
 dlo-complete.zip
+.gstack/
