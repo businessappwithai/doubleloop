@@ -1,0 +1,29 @@
+version: "3.9"
+
+services:
+  dlo:
+    build:
+      context: ../../../
+      dockerfile: dlo/packages/copilotkit-ui/Dockerfile
+    ports:
+      - "8090:8090"
+    environment:
+      - NODE_ENV=production
+      - PORT=8090
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - PI_API_KEY=${PI_API_KEY}
+      - NEXT_PUBLIC_DLO_DAEMON_URL=${NEXT_PUBLIC_DLO_DAEMON_URL:-http://localhost:8090}
+    volumes:
+      - dlo-pipelines:/app/.dlo/pipelines
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8090/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  dlo-pipelines:

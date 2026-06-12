@@ -1,0 +1,13 @@
+{
+  "buildCommand": "cd ../.. && pnpm install --frozen-lockfile && cd packages/copilotkit-ui && pnpm build",
+  "outputDirectory": ".next",
+  "installCommand": "echo 'skipped — see buildCommand'",
+  "framework": "nextjs",
+  "regions": ["iad1"],
+  "env": {
+    "GEMINI_API_KEY": "@gemini-api-key",
+    "ANTHROPIC_API_KEY": "@anthropic-api-key",
+    "DEEPSEEK_API_KEY": "@deepseek-api-key",
+    "PI_API_KEY": "@pi-api-key"
+  }
+}
