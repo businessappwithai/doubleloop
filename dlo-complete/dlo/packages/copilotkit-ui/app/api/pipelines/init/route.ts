@@ -1,34 +1,44 @@
 import { NextResponse } from "next/server";
-import { savePipeline, runResearchBackground } from "@/lib/pipeline-helper";
+import { v4 as uuidv4 } from "uuid";
+import { savePipeline, runResearchBackground, runPlanningBackground, runExecutionBackground } from "@/lib/pipeline-helper";
 
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    const body = await req.json();
+    const body = await request.json();
     const { projectName, objectivesMarkdown, workspaceDir, config } = body;
 
-    const pipelineId = `pipe-${crypto.randomUUID()}`;
-    const state = {
+    if (!projectName || !objectivesMarkdown) {
+      return NextResponse.json(
+        { error: "Missing required fields: projectName, objectivesMarkdown" },
+        { status: 400 }
+      );
+    }
+
+    const pipelineId = uuidv4();
+    const now = new Date().toISOString();
+
+    const pipeline = {
       pipelineId,
       projectName,
       objectivesMarkdown,
-      workspaceDir,
-      config,
+      workspaceDir: workspaceDir || process.cwd(),
+      config: config || {},
       phase: "RESEARCH_RUNNING",
-      createdAt: new Date().toISOString(),
-      lastTransitionAt: new Date().toISOString(),
-      budget: {
-        spent: { usd: 0, tokens: 0, wallClockMs: 0 },
-        remaining: { usd: config?.budgets?.usd || 100, tokens: config?.budgets?.tokens || 10000000, wallClockMs: config?.budgets?.wallClockMs || 3600000 }
-      }
+      createdAt: now,
+      lastTransitionAt: now,
     };
 
-    await savePipeline(state);
-    
-    // Trigger research in background
-    void runResearchBackground(pipelineId);
+    await savePipeline(pipeline);
 
-    return NextResponse.json({ pipelineId });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    runResearchBackground(pipelineId).catch((err) => {
+      console.error(`Research phase failed for ${pipelineId}:`, err);
+    });
+
+    return NextResponse.json({ pipelineId, phase: "RESEARCH_RUNNING" }, { status: 201 });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message || "Failed to initialize pipeline" },
+      { status: 500 }
+    );
   }
 }
