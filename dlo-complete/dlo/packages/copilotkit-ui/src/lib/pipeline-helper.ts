@@ -173,11 +173,14 @@ export async function runPlanningBackground(pipelineId: string): Promise<void> {
     // If the planner model is a Gemini model, use the Gemini API key, otherwise default to Anthropic
     const plannerModel = state.config?.providers?.planner?.model || "claude-3-5-sonnet-latest";
     const isGemini = plannerModel.toLowerCase().startsWith("gemini") || plannerModel.toLowerCase().startsWith("google");
-    const apiKey = isGemini 
-      ? (state.config?.providers?.research?.apiKey || process.env.GEMINI_API_KEY)
-      : (state.config?.providers?.planner?.apiKey || process.env.ANTHROPIC_API_KEY);
+    const anthropicBaseUrl = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
+    const usingProxy = !!process.env.ANTHROPIC_BASE_URL;
 
-    if (!apiKey) {
+    const apiKey = isGemini
+      ? (state.config?.providers?.research?.apiKey || process.env.GEMINI_API_KEY)
+      : (state.config?.providers?.planner?.apiKey || process.env.ANTHROPIC_API_KEY || (usingProxy ? "proxy" : ""));
+
+    if (!apiKey && !usingProxy) {
       throw new Error(`API Key missing for planning phase model ${plannerModel}.`);
     }
 
@@ -191,7 +194,7 @@ export async function runPlanningBackground(pipelineId: string): Promise<void> {
       rawText = result.response.text();
     } else {
       // Stub planning with Claude if no real Anthropic API is active, otherwise prompt Claude
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const response = await fetch(`${anthropicBaseUrl}/v1/messages`, {
         method: "POST",
         headers: {
           "x-api-key": apiKey,

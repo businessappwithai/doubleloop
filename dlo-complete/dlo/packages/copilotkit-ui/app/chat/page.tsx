@@ -45,12 +45,17 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
   const [manualResearch, setManualResearch] = useState("");
   const [manualProjectName, setManualProjectName] = useState("");
   const [manualObjectives, setManualObjectives] = useState("");
+  const [gateDecision, setGateDecision] = useState<"APPROVE" | "STEER" | "REJECT" | null>(null);
+  const [gateInstructions, setGateInstructions] = useState("");
+  const [gateReason, setGateReason] = useState("");
+  const [gateSubmitting, setGateSubmitting] = useState(false);
+  const [gateExhibitTab, setGateExhibitTab] = useState(0);
   const [config, setConfig] = useState({
     copilotModel: "gemini-1.5-pro",
     providers: {
       research: { apiKey: "", vendor: "gemini-deep-research" as const, model: "deep-research-preview-04-2026" as string },
-      planner: { apiKey: "", vendor: "claude-code" as const, model: "claude-3-5-sonnet-latest" as string },
-      supervisor: { apiKey: "", vendor: "claude-code" as const, model: "claude-3-5-sonnet-latest" as string },
+      planner: { apiKey: "", vendor: "claude-code" as const, model: "claude-haiku-4-5-20251001" as string },
+      supervisor: { apiKey: "", vendor: "claude-code" as const, model: "claude-haiku-4-5-20251001" as string },
       executor: { apiKey: "", vendor: "codewhale" as const, model: "deepseek-coder" as string, maxConcurrent: 8 },
       harness: { apiKey: "", vendor: "pi" as const, model: "pi-default-model" as string, sdkPackage: "@earendil-works/pi-coding-agent" as const, subagentsExtension: "@gotgenes/pi-subagents" as const }
     },
@@ -281,6 +286,24 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
     setManualResearch("");
   };
 
+  const handleGateResolve = async () => {
+    const gate = store.pipelineStatus?.activeGate;
+    if (!gate || !gateDecision) return;
+    setGateSubmitting(true);
+    try {
+      await store.resolveGate(gate.gateId as any, gateDecision, {
+        instructions: gateDecision === "STEER" ? gateInstructions : undefined,
+        reason: gateDecision === "REJECT" ? gateReason : undefined,
+      });
+      setGateDecision(null);
+      setGateInstructions("");
+      setGateReason("");
+      setGateExhibitTab(0);
+    } finally {
+      setGateSubmitting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-slate-900 to-slate-800">
       {/* Header */}
@@ -487,6 +510,123 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                       )}
                     </div>
                   </div>
+
+                  {/* Gate review */}
+                  {store.pipelineStatus.activeGate && (
+                    <div className="rounded-lg border border-amber-700/60 bg-amber-900/20 overflow-hidden">
+                      {/* Header */}
+                      <div className="bg-amber-900/40 border-b border-amber-700/60 px-3 py-2 flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-300 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-amber-200">
+                            {store.pipelineStatus.activeGate.kind === "DOMAIN_DOCUMENT"
+                              ? "Review: Domain Document"
+                              : "Review: Tripartite Plan"}
+                          </p>
+                          <p className="text-xs text-amber-300/70">Approve to proceed · Steer to revise · Reject to fail</p>
+                        </div>
+                      </div>
+
+                      {/* Exhibit tabs (TRIPARTITE_PLAN only) */}
+                      {store.pipelineStatus.activeGate.kind === "TRIPARTITE_PLAN" && (
+                        <div className="flex border-b border-amber-700/40">
+                          {["CEO Plan", "Architecture", "Engineering"].map((label, i) => (
+                            <button
+                              key={label}
+                              onClick={() => setGateExhibitTab(i)}
+                              className={`flex-1 px-2 py-1.5 text-xs font-medium transition ${
+                                gateExhibitTab === i
+                                  ? "bg-amber-800/40 text-amber-100"
+                                  : "text-amber-400 hover:text-amber-200"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Exhibit content */}
+                      <div className="max-h-48 overflow-y-auto p-3">
+                        <pre className="text-xs text-slate-200 whitespace-pre-wrap font-mono leading-relaxed">
+                          {String((store.pipelineStatus.activeGate.exhibits as any[])[gateExhibitTab] ?? "")}
+                        </pre>
+                      </div>
+
+                      {/* STEER instructions textarea */}
+                      {gateDecision === "STEER" && (
+                        <div className="px-3 pb-2">
+                          <textarea
+                            value={gateInstructions}
+                            onChange={e => setGateInstructions(e.target.value)}
+                            placeholder="Describe what to revise..."
+                            rows={3}
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition resize-none"
+                          />
+                        </div>
+                      )}
+
+                      {/* REJECT reason textarea */}
+                      {gateDecision === "REJECT" && (
+                        <div className="px-3 pb-2">
+                          <textarea
+                            value={gateReason}
+                            onChange={e => setGateReason(e.target.value)}
+                            placeholder="Reason for rejection..."
+                            rows={3}
+                            className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition resize-none"
+                          />
+                        </div>
+                      )}
+
+                      {/* Action buttons */}
+                      <div className="px-3 pb-3 flex gap-2">
+                        {gateDecision ? (
+                          <>
+                            <button
+                              onClick={handleGateResolve}
+                              disabled={
+                                gateSubmitting ||
+                                (gateDecision === "STEER" && !gateInstructions.trim()) ||
+                                (gateDecision === "REJECT" && !gateReason.trim())
+                              }
+                              className="flex-1 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded transition"
+                            >
+                              {gateSubmitting ? "Submitting…" : `Confirm ${gateDecision}`}
+                            </button>
+                            <button
+                              onClick={() => { setGateDecision(null); setGateInstructions(""); setGateReason(""); }}
+                              disabled={gateSubmitting}
+                              className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs rounded transition"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => setGateDecision("APPROVE")}
+                              className="flex-1 py-2 bg-green-700 hover:bg-green-600 text-white text-xs font-semibold rounded transition"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => setGateDecision("STEER")}
+                              className="flex-1 py-2 bg-amber-700 hover:bg-amber-600 text-white text-xs font-semibold rounded transition"
+                            >
+                              Steer
+                            </button>
+                            <button
+                              onClick={() => setGateDecision("REJECT")}
+                              className="flex-1 py-2 bg-red-800 hover:bg-red-700 text-white text-xs font-semibold rounded transition"
+                            >
+                              Reject
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Module board */}
                   {store.pipelineStatus.board && (
@@ -713,7 +853,7 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                   Planner Model (Claude Code)
                 </label>
                 <select
-                  value={["claude-3-5-sonnet-latest", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-latest", "claude-3-opus-latest", "gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001"].includes(config.providers.planner.model || "") ? config.providers.planner.model : "custom"}
+                  value={["claude-haiku-4-5-20251001", "claude-3-5-sonnet-latest", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-latest", "claude-3-opus-latest", "gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001"].includes(config.providers.planner.model || "") ? config.providers.planner.model : "custom"}
                   onChange={(e) => {
                     const val = e.target.value;
                     setConfig({
@@ -729,6 +869,7 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                   }}
                   className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mb-2"
                 >
+                  <option value="claude-haiku-4-5-20251001">claude-haiku-4-5-20251001</option>
                   <option value="claude-3-5-sonnet-latest">claude-3-5-sonnet-latest</option>
                   <option value="claude-3-5-sonnet-20241022">claude-3-5-sonnet-20241022</option>
                   <option value="claude-3-5-haiku-latest">claude-3-5-haiku-latest</option>
@@ -739,7 +880,7 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                   <option value="custom">Custom Model Name...</option>
                 </select>
                 
-                {!["claude-3-5-sonnet-latest", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-latest", "claude-3-opus-latest", "gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001"].includes(config.providers.planner.model || "") && (
+                {!["claude-haiku-4-5-20251001", "claude-3-5-sonnet-latest", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-latest", "claude-3-opus-latest", "gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001"].includes(config.providers.planner.model || "") && (
                   <input
                     type="text"
                     placeholder="Enter custom model name (e.g. gemini-2.0-flash-001)"
@@ -777,6 +918,7 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                   }}
                   className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mb-2"
                 >
+                  <option value="claude-haiku-4-5-20251001">claude-haiku-4-5-20251001</option>
                   <option value="claude-3-5-sonnet-latest">claude-3-5-sonnet-latest</option>
                   <option value="claude-3-5-sonnet-20241022">claude-3-5-sonnet-20241022</option>
                   <option value="claude-3-5-haiku-latest">claude-3-5-haiku-latest</option>
@@ -787,7 +929,7 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                   <option value="custom">Custom Model Name...</option>
                 </select>
                 
-                {!["claude-3-5-sonnet-latest", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-latest", "claude-3-opus-latest", "gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001"].includes(config.providers.supervisor.model || "") && (
+                {!["claude-haiku-4-5-20251001", "claude-3-5-sonnet-latest", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-latest", "claude-3-opus-latest", "gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite-001"].includes(config.providers.supervisor.model || "") && (
                   <input
                     type="text"
                     placeholder="Enter custom model name (e.g. gemini-2.0-flash-001)"
