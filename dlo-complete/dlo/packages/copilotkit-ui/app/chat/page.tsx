@@ -273,6 +273,25 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
         </div>
       </div>
 
+      {/* API key warning banner */}
+      {!config.providers.research.apiKey && (
+        <div className="bg-amber-900/50 border-b border-amber-700 px-4 py-2">
+          <div className="max-w-7xl mx-auto flex items-center gap-2 text-amber-200 text-sm">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>
+              No Gemini API key configured. Chat requires a key — add it in{" "}
+              <button
+                onClick={() => setShowSettings(true)}
+                className="underline hover:text-white transition"
+              >
+                Config Keys &amp; Limits
+              </button>{" "}
+              or set <code className="font-mono text-xs bg-amber-800/60 px-1 rounded">GEMINI_API_KEY</code> in your environment.
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Main content */}
       <div className="flex-1 overflow-hidden">
         <div className="h-full grid grid-cols-3 gap-4 p-4">

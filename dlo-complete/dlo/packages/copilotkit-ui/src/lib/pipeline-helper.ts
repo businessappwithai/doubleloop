@@ -115,12 +115,19 @@ Format the output strictly as Markdown. Do not include markdown code block wraps
       const result = await model.generateContent(prompt);
       markdown = result.response.text();
     } catch (err: any) {
-      // If the model doesn't support generateContent, try with gemini-2.0-flash
       if (err.message?.includes("Interactions API") || err.message?.includes("not supported")) {
         console.warn(`Model ${modelName} not supported for generateContent, falling back to gemini-2.0-flash`);
         usedModel = "gemini-2.0-flash";
         const fallbackModel = genAI.getGenerativeModel({ model: usedModel });
         const result = await fallbackModel.generateContent(prompt);
+        markdown = result.response.text();
+      } else if (err.message?.includes("429") || err.message?.includes("Too Many Requests")) {
+        // Parse retry delay from error detail; cap at 30s
+        const delayMatch = err.message?.match(/retry[^0-9]*([0-9.]+)s/i);
+        const delaySec = delayMatch ? Math.min(parseFloat(delayMatch[1]), 30) : 15;
+        console.warn(`Rate limited (429). Retrying research phase in ${delaySec}s...`);
+        await new Promise(r => setTimeout(r, delaySec * 1000));
+        const result = await model.generateContent(prompt);
         markdown = result.response.text();
       } else {
         throw err;
@@ -145,7 +152,12 @@ Format the output strictly as Markdown. Do not include markdown code block wraps
     console.log(`Research phase completed for pipeline ${pipelineId}`);
   } catch (err: any) {
     state.phase = "FAILED";
-    state.error = err.message || String(err);
+    const raw: string = err.message || String(err);
+    if ((raw.includes("429") || raw.includes("Too Many Requests")) && raw.includes("limit: 0")) {
+      state.error = "Gemini free-tier quota exhausted. Upgrade to a paid plan at https://ai.google.dev or use a different API key.";
+    } else {
+      state.error = raw;
+    }
     state.lastTransitionAt = new Date().toISOString();
     console.error(`Research phase failed for pipeline ${pipelineId}:`, err);
     await savePipeline(state);
