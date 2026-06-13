@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
-import { savePipeline, runResearchBackground, runPlanningBackground, runExecutionBackground } from "@/lib/pipeline-helper";
+import { savePipeline, runResearchBackground } from "@/lib/pipeline-helper";
 
 export async function POST(request: Request) {
   try {

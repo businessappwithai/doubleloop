@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getPipeline } from "@/lib/pipeline-helper";
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: { pipelineId: string } }
 ) {
   try {
