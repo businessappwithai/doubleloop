@@ -87,8 +87,13 @@ export const useDloStore = create<DloStore>()(
     loadPipeline: async (pipelineId: PipelineId) => {
       const client = get().client;
       if (!client) return;
-      set({ activePipelineId: pipelineId });
-      await get().startPolling();
+      try {
+        const status = await client.getPipelineStatus(pipelineId);
+        set({ activePipelineId: pipelineId, pipelineStatus: status, error: null });
+        await get().startPolling();
+      } catch {
+        set({ error: `Pipeline not found: ${pipelineId}` });
+      }
     },
 
     setPipelineStatus: (status: PipelineStatus) => {

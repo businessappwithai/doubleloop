@@ -346,6 +346,16 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
         </div>
       )}
 
+      {/* Pipeline load error banner */}
+      {store.error && !store.activePipelineId && (
+        <div className="bg-red-900/50 border-b border-red-700 px-4 py-2">
+          <div className="max-w-7xl mx-auto flex items-center gap-2 text-red-200 text-sm">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>{store.error}</span>
+          </div>
+        </div>
+      )}
+
       {/* Main content */}
       <div className="flex-1 overflow-hidden">
         {/* When no key: research panel takes full width; when key present: 2/3 chat + 1/3 panel */}
