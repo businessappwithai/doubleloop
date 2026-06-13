@@ -86,6 +86,16 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
     setIsConnected(true);
   }, [daemonUrl, setClient]);
 
+  // Resume pipeline from ?pipeline=<id> URL param
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const pid = params.get("pipeline");
+    if (pid && !store.activePipelineId) {
+      store.loadPipeline(pid as any);
+    }
+  }, [store.client]); // re-run once client is ready
+
   // Load configuration from local storage
   useEffect(() => {
     const stored = localStorage.getItem("dlo-config");

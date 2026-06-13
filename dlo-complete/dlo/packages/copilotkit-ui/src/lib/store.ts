@@ -27,6 +27,7 @@ interface DloStore {
     config?: any;
     researchMarkdown?: string;
   }) => Promise<void>;
+  loadPipeline: (pipelineId: PipelineId) => Promise<void>;
   setPipelineStatus: (status: PipelineStatus) => void;
   startPolling: () => Promise<void>;
   stopPolling: () => void;
@@ -81,6 +82,13 @@ export const useDloStore = create<DloStore>()(
         set({ error: msg });
         throw e;
       }
+    },
+
+    loadPipeline: async (pipelineId: PipelineId) => {
+      const client = get().client;
+      if (!client) return;
+      set({ activePipelineId: pipelineId });
+      await get().startPolling();
     },
 
     setPipelineStatus: (status: PipelineStatus) => {
