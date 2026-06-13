@@ -36,6 +36,15 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
   const [showSettings, setShowSettings] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResults, setTestResults] = useState<any>(null);
+  const [manualResearchMode, setManualResearchMode] = useState(false);
+  const [pendingPipelineParams, setPendingPipelineParams] = useState<{
+    projectName: string;
+    objectivesMarkdown: string;
+    workspaceDir: string;
+  } | null>(null);
+  const [manualResearch, setManualResearch] = useState("");
+  const [manualProjectName, setManualProjectName] = useState("");
+  const [manualObjectives, setManualObjectives] = useState("");
   const [config, setConfig] = useState({
     copilotModel: "gemini-1.5-pro",
     providers: {
@@ -129,13 +138,24 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
           console.error("Failed to parse stored config:", err);
         }
       }
+      if (!activeConfig.providers?.research?.apiKey) {
+        setPendingPipelineParams({
+          projectName: input.projectName,
+          objectivesMarkdown: input.objectivesMarkdown,
+          workspaceDir: input.workspaceDir,
+        });
+        setManualProjectName(input.projectName || "");
+        setManualObjectives(input.objectivesMarkdown || "");
+        setManualResearchMode(true);
+        return "Research agent (Gemini Deep Research) is not configured. Paste your research and requirements in the panel on the right, then click 'Start Pipeline'.";
+      }
       await store.initPipeline({
         projectName: input.projectName,
         objectivesMarkdown: input.objectivesMarkdown,
         workspaceDir: input.workspaceDir,
         config: activeConfig,
       });
-      return `Pipeline initialized! ID: ${store.activePipelineId}`;
+      return `Pipeline initialized! Proceeding with Gemini Deep Research phase.`;
     },
   });
 
@@ -227,6 +247,30 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
       : { phase: "INIT", board: null, activeGate: null, budget: null },
   });
 
+  const submitManualResearch = async () => {
+    if (!manualResearch.trim()) return;
+    let activeConfig = { ...config };
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("dlo-config");
+        if (stored) activeConfig = JSON.parse(stored);
+      } catch {}
+    }
+    const params = pendingPipelineParams ?? {
+      projectName: manualProjectName || "New Project",
+      objectivesMarkdown: manualObjectives || "Build the project as described in the research below.",
+      workspaceDir: "/tmp/dlo-workspace",
+    };
+    await store.initPipeline({
+      ...params,
+      config: activeConfig,
+      researchMarkdown: manualResearch,
+    } as any);
+    setManualResearchMode(false);
+    setPendingPipelineParams(null);
+    setManualResearch("");
+  };
+
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-slate-900 to-slate-800">
       {/* Header */}
@@ -307,120 +351,192 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
             />
           </div>
 
-          {/* Status panel */}
-          <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 overflow-y-auto">
-            <h2 className="text-lg font-semibold text-white mb-4">Pipeline Status</h2>
-
-            {!isConnected ? (
-              <div className="text-amber-300 flex items-start gap-2">
-                <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
-                <div>
-                  <p className="font-semibold">Not connected</p>
-                  <p className="text-sm text-amber-200">
-                    Ensure DLO daemon is running on {daemonUrl}
+          {/* Status / Manual Research panel */}
+          {(manualResearchMode || (!store.pipelineStatus && !config.providers.research.apiKey && isConnected)) ? (
+            /* ── Manual research input ── */
+            <div className="bg-slate-800 rounded-lg border border-amber-700/60 flex flex-col overflow-hidden">
+              {/* Panel header */}
+              <div className="bg-amber-900/40 border-b border-amber-700/60 px-4 py-3 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-amber-300 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-sm font-semibold text-amber-200">Paste Your Research</h2>
+                  <p className="text-xs text-amber-300/70">
+                    Research agent unavailable — provide your own research to proceed directly to planning.
                   </p>
                 </div>
+                {manualResearchMode && (
+                  <button
+                    onClick={() => { setManualResearchMode(false); setPendingPipelineParams(null); }}
+                    className="text-amber-400 hover:text-white transition flex-shrink-0"
+                    title="Cancel"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
-            ) : store.pipelineStatus ? (
-              <div className="space-y-4">
-                {/* Pipeline ID */}
-                <div>
-                  <p className="text-xs text-slate-400 uppercase tracking-wide">Pipeline ID</p>
-                  <p className="text-sm font-mono text-slate-200 break-all">
-                    {store.pipelineStatus.pipelineId}
-                  </p>
+
+              {/* Fields */}
+              <div className="flex flex-col flex-1 gap-3 p-4 overflow-hidden">
+                {/* Project name */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-400 uppercase tracking-wide">Project Name</label>
+                  <input
+                    type="text"
+                    value={manualProjectName}
+                    onChange={e => setManualProjectName(e.target.value)}
+                    placeholder="e.g. TodoApp"
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition"
+                  />
                 </div>
 
-                {/* Phase indicator */}
-                <div>
-                  <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Phase</p>
-                  <div className={`bg-slate-900 rounded px-3 py-2 border-l-4 ${store.pipelineStatus.phase === "FAILED" ? "border-red-500" : "border-blue-500"}`}>
-                    <p className={`text-sm font-semibold ${store.pipelineStatus.phase === "FAILED" ? "text-red-400" : "text-blue-300"}`}>
-                      {store.pipelineStatus.phase}
+                {/* Objectives */}
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-400 uppercase tracking-wide">Objectives</label>
+                  <textarea
+                    value={manualObjectives}
+                    onChange={e => setManualObjectives(e.target.value)}
+                    placeholder="What should this project accomplish?"
+                    rows={2}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition resize-none"
+                  />
+                </div>
+
+                {/* Big research textarea */}
+                <div className="flex flex-col gap-1 flex-1 min-h-0">
+                  <label className="text-xs text-slate-400 uppercase tracking-wide">
+                    Research &amp; Requirements
+                  </label>
+                  <textarea
+                    value={manualResearch}
+                    onChange={e => setManualResearch(e.target.value)}
+                    placeholder={"Paste your full research here — technical requirements, architecture notes, API specs, data models, user flows, constraints, or any context the planner should know.\n\nMarkdown supported."}
+                    className="flex-1 w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition resize-none font-mono leading-relaxed"
+                  />
+                </div>
+
+                {/* Submit */}
+                <button
+                  onClick={submitManualResearch}
+                  disabled={!manualResearch.trim() || store.isPolling}
+                  className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded transition flex items-center justify-center gap-2"
+                >
+                  <Zap className="w-4 h-4" />
+                  {store.isPolling ? "Starting pipeline…" : "Start Pipeline with This Research"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* ── Pipeline Status panel ── */
+            <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 overflow-y-auto">
+              <h2 className="text-lg font-semibold text-white mb-4">Pipeline Status</h2>
+
+              {!isConnected ? (
+                <div className="text-amber-300 flex items-start gap-2">
+                  <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-semibold">Not connected</p>
+                    <p className="text-sm text-amber-200">
+                      Ensure DLO daemon is running on {daemonUrl}
                     </p>
-                    {store.pipelineStatus.phase === "FAILED" && (store.pipelineStatus as any).error && (
-                      <p className="text-xs text-red-200 mt-1 break-words font-mono">
-                        {(store.pipelineStatus as any).error}
-                      </p>
-                    )}
                   </div>
                 </div>
-
-                {/* Module board */}
-                {store.pipelineStatus.board && (
+              ) : store.pipelineStatus ? (
+                <div className="space-y-4">
+                  {/* Pipeline ID */}
                   <div>
-                    <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">
-                      Modules
+                    <p className="text-xs text-slate-400 uppercase tracking-wide">Pipeline ID</p>
+                    <p className="text-sm font-mono text-slate-200 break-all">
+                      {store.pipelineStatus.pipelineId}
                     </p>
-                    <div className="space-y-1">
-                      {store.pipelineStatus.board.modules.slice(0, 5).map((mod) => (
-                        <div
-                          key={mod.moduleId}
-                          className="flex items-center gap-2 text-xs bg-slate-900 px-2 py-1 rounded"
-                        >
-                          {mod.status === "PASSED" ? (
-                            <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
-                          ) : mod.status === "EXECUTING" ? (
-                            <Activity className="w-4 h-4 text-blue-400 flex-shrink-0 animate-spin" />
-                          ) : mod.status === "REJECTED" ? (
-                            <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-                          ) : (
-                            <Clock className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                          )}
-                          <span className="text-slate-300 truncate">{mod.moduleId}</span>
-                          <span className="text-slate-500 ml-auto">×{mod.attempts}</span>
-                        </div>
-                      ))}
-                      {(store.pipelineStatus.board.modules.length || 0) > 5 && (
-                        <p className="text-xs text-slate-500 px-2 py-1">
-                          +{store.pipelineStatus.board.modules.length - 5} more
+                  </div>
+
+                  {/* Phase indicator */}
+                  <div>
+                    <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Phase</p>
+                    <div className={`bg-slate-900 rounded px-3 py-2 border-l-4 ${store.pipelineStatus.phase === "FAILED" ? "border-red-500" : "border-blue-500"}`}>
+                      <p className={`text-sm font-semibold ${store.pipelineStatus.phase === "FAILED" ? "text-red-400" : "text-blue-300"}`}>
+                        {store.pipelineStatus.phase}
+                      </p>
+                      {store.pipelineStatus.phase === "FAILED" && (store.pipelineStatus as any).error && (
+                        <p className="text-xs text-red-200 mt-1 break-words font-mono">
+                          {(store.pipelineStatus as any).error}
                         </p>
                       )}
                     </div>
                   </div>
-                )}
 
-                {/* Budget */}
-                {store.pipelineStatus.budget && (
-                  <div>
-                    <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">
-                      Budget
-                    </p>
-                    <div className="space-y-1 text-xs">
-                      {Object.entries(store.pipelineStatus.budget.spent || {})
-                        .slice(0, 3)
-                        .map(([dim, spent]) => (
-                          <div key={dim} className="flex justify-between text-slate-300">
-                            <span>{dim}</span>
-                            <span className="font-mono text-amber-300">
-                              {spent} / {store.pipelineStatus?.budget?.remaining?.[dim]}
-                            </span>
+                  {/* Module board */}
+                  {store.pipelineStatus.board && (
+                    <div>
+                      <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Modules</p>
+                      <div className="space-y-1">
+                        {store.pipelineStatus.board.modules.slice(0, 5).map((mod) => (
+                          <div
+                            key={mod.moduleId}
+                            className="flex items-center gap-2 text-xs bg-slate-900 px-2 py-1 rounded"
+                          >
+                            {mod.status === "PASSED" ? (
+                              <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
+                            ) : mod.status === "EXECUTING" ? (
+                              <Activity className="w-4 h-4 text-blue-400 flex-shrink-0 animate-spin" />
+                            ) : mod.status === "REJECTED" ? (
+                              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                            ) : (
+                              <Clock className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                            )}
+                            <span className="text-slate-300 truncate">{mod.moduleId}</span>
+                            <span className="text-slate-500 ml-auto">×{mod.attempts}</span>
                           </div>
                         ))}
+                        {(store.pipelineStatus.board.modules.length || 0) > 5 && (
+                          <p className="text-xs text-slate-500 px-2 py-1">
+                            +{store.pipelineStatus.board.modules.length - 5} more
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Timestamps */}
-                <div className="pt-2 border-t border-slate-700">
-                  <p className="text-xs text-slate-400">
-                    Created:{" "}
-                    <span className="text-slate-300">
-                      {format(new Date(store.pipelineStatus.createdAt), "MMM d, HH:mm:ss")}
-                    </span>
-                  </p>
-                  <p className="text-xs text-slate-400">
-                    Updated:{" "}
-                    <span className="text-slate-300">
-                      {format(new Date(store.pipelineStatus.lastTransitionAt), "MMM d, HH:mm:ss")}
-                    </span>
-                  </p>
+                  {/* Budget */}
+                  {store.pipelineStatus.budget && (
+                    <div>
+                      <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Budget</p>
+                      <div className="space-y-1 text-xs">
+                        {Object.entries(store.pipelineStatus.budget.spent || {})
+                          .slice(0, 3)
+                          .map(([dim, spent]) => (
+                            <div key={dim} className="flex justify-between text-slate-300">
+                              <span>{dim}</span>
+                              <span className="font-mono text-amber-300">
+                                {spent} / {store.pipelineStatus?.budget?.remaining?.[dim]}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Timestamps */}
+                  <div className="pt-2 border-t border-slate-700">
+                    <p className="text-xs text-slate-400">
+                      Created:{" "}
+                      <span className="text-slate-300">
+                        {format(new Date(store.pipelineStatus.createdAt), "MMM d, HH:mm:ss")}
+                      </span>
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      Updated:{" "}
+                      <span className="text-slate-300">
+                        {format(new Date(store.pipelineStatus.lastTransitionAt), "MMM d, HH:mm:ss")}
+                      </span>
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <p className="text-slate-400 text-sm">Initialize a pipeline to get started.</p>
-            )}
-          </div>
+              ) : (
+                <p className="text-slate-400 text-sm">Initialize a pipeline to get started.</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

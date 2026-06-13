@@ -61,6 +61,7 @@ export interface InitPipelineRequest {
   groundingDocuments?: Array<{ name: string; contentBase64: string; mediaType: string }>;
   workspaceDir: string;
   config: unknown; // DloConfig
+  researchMarkdown?: string; // user-supplied research; skips the Gemini research phase
 }
 
 export interface GateResolutionRequest {
