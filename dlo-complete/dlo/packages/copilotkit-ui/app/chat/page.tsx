@@ -294,9 +294,9 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
 
       {/* Main content */}
       <div className="flex-1 overflow-hidden">
-        <div className="h-full grid grid-cols-3 gap-4 p-4">
+        <div className="h-full grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
           {/* Chat */}
-          <div className="col-span-2 bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+          <div className="md:col-span-2 bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
             <CopilotChat
               instructions="You are DLO, an autonomous development pipeline orchestrator. Help the user initialize pipelines, monitor progress, resolve HITL gates, and view generated artifacts. Be professional, concise, and always provide actionable feedback."
               labels={{
