@@ -338,18 +338,21 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
 
       {/* Main content */}
       <div className="flex-1 overflow-hidden">
-        <div className="h-full grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
-          {/* Chat */}
-          <div className="md:col-span-2 bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
-            <CopilotChat
-              instructions="You are DLO, an autonomous development pipeline orchestrator. Help the user initialize pipelines, monitor progress, resolve HITL gates, and view generated artifacts. Be professional, concise, and always provide actionable feedback."
-              labels={{
-                title: "DLO Chat",
-                initial: "👋 Hello! I'm DLO. I can help you orchestrate autonomous development pipelines. Try saying 'initialize a new pipeline' or 'check pipeline status'.",
-                placeholder: "Ask me about your pipeline...",
-              }}
-            />
-          </div>
+        {/* When no key: research panel takes full width; when key present: 2/3 chat + 1/3 panel */}
+        <div className={`h-full grid grid-cols-1 gap-4 p-4 ${config.providers.research.apiKey ? "md:grid-cols-3" : "md:grid-cols-1"}`}>
+          {/* Chat — only mount when a Gemini key is configured (prevents "Failed to fetch chat completion") */}
+          {config.providers.research.apiKey && (
+            <div className="md:col-span-2 bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+              <CopilotChat
+                instructions="You are DLO, an autonomous development pipeline orchestrator. Help the user initialize pipelines, monitor progress, resolve HITL gates, and view generated artifacts. Be professional, concise, and always provide actionable feedback."
+                labels={{
+                  title: "DLO Chat",
+                  initial: "👋 Hello! I'm DLO. I can help you orchestrate autonomous development pipelines. Try saying 'initialize a new pipeline' or 'check pipeline status'.",
+                  placeholder: "Ask me about your pipeline...",
+                }}
+              />
+            </div>
+          )}
 
           {/* Status / Manual Research panel */}
           {(manualResearchMode || (!store.pipelineStatus && !config.providers.research.apiKey && isConnected)) ? (
