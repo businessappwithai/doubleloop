@@ -1,6 +1,24 @@
 import { join } from "node:path";
 import { mkdir, writeFile, readFile, readdir } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+
+async function spawnClaude(prompt: string, model: string, workspaceDir?: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("claude", ["-p", prompt, "--model", model], {
+      env: process.env,
+      cwd: workspaceDir || process.cwd(),
+    });
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (d: Buffer) => { out += d.toString(); });
+    child.stderr.on("data", (d: Buffer) => { err += d.toString(); });
+    child.on("close", (code: number | null) => {
+      if (code === 0) resolve(out.trim());
+      else reject(new Error(`claude exited ${code}: ${err.trim() || out.trim()}`));
+    });
+  });
+}
 
 export interface PipelineState {
   pipelineId: string;
@@ -189,30 +207,11 @@ export async function runPlanningBackground(pipelineId: string): Promise<void> {
     if (isGemini) {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: plannerModel });
-      const prompt = getPlanningPrompt(state);
-      const result = await model.generateContent(prompt);
+      const result = await model.generateContent(getPlanningPrompt(state));
       rawText = result.response.text();
     } else {
-      // Stub planning with Claude if no real Anthropic API is active, otherwise prompt Claude
-      const response = await fetch(`${anthropicBaseUrl}/v1/messages`, {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          model: plannerModel,
-          max_tokens: 4000,
-          messages: [{ role: "user", content: getPlanningPrompt(state) }]
-        })
-      });
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Anthropic API planning request failed: ${errText}`);
-      }
-      const data = await response.json();
-      rawText = data.content?.[0]?.text || "";
+      // Spawn claude CLI — it carries its own credentials and uses ANTHROPIC_BASE_URL proxy
+      rawText = await spawnClaude(getPlanningPrompt(state), plannerModel, state.workspaceDir);
     }
 
     let jsonText = rawText.trim();
