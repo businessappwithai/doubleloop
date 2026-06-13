@@ -25,6 +25,7 @@ interface DloStore {
     objectivesMarkdown: string;
     workspaceDir: string;
     config?: any;
+    researchMarkdown?: string;
   }) => Promise<void>;
   setPipelineStatus: (status: PipelineStatus) => void;
   startPolling: () => Promise<void>;
@@ -68,6 +69,7 @@ export const useDloStore = create<DloStore>()(
           objectivesMarkdown: req.objectivesMarkdown,
           workspaceDir: req.workspaceDir,
           config: req.config || {},
+          ...(req.researchMarkdown ? { researchMarkdown: req.researchMarkdown } : {}),
         });
 
         set({ activePipelineId: pipelineId });

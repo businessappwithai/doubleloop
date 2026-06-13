@@ -265,7 +265,7 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
       ...params,
       config: activeConfig,
       researchMarkdown: manualResearch,
-    } as any);
+    });
     setManualResearchMode(false);
     setPendingPipelineParams(null);
     setManualResearch("");
