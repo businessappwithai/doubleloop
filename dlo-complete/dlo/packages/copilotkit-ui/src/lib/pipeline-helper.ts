@@ -861,22 +861,26 @@ export async function runExecutionBackground(pipelineId: string, toolsConfirmed 
       const executorType = latest.config?.providers?.executor?.type;
       const useClaude = executorType === "claude";
 
-      try {
-        if (useClaude) {
-          console.log(`[Pi→Claude] Generating module ${moduleId} with Claude executor`);
-          await spawnClaudeForModule(
-            { moduleId: planMod.moduleId, title: planMod.title, prompt: planMod.prompt, touches: planMod.touches },
-            latest.workspaceDir, latest.config, pipelineCtx
-          );
-        } else {
-          console.log(`[Pi→CodeWhale] Generating module ${moduleId}: ${planMod.title}`);
+      if (useClaude) {
+        console.log(`[Pi→Claude] Generating module ${moduleId} with Claude executor`);
+        await spawnClaudeForModule(
+          { moduleId: planMod.moduleId, title: planMod.title, prompt: planMod.prompt, touches: planMod.touches },
+          latest.workspaceDir, latest.config, pipelineCtx
+        );
+      } else {
+        console.log(`[Pi→CodeWhale] Generating module ${moduleId}: ${planMod.title}`);
+        try {
           await spawnCodeWhaleForModule(
             { moduleId: planMod.moduleId, title: planMod.title, prompt: planMod.prompt, touches: planMod.touches },
             latest.workspaceDir, latest.config, pipelineCtx
           );
+        } catch (cwErr: any) {
+          console.warn(`[Pi→CodeWhale] Failed, falling back to Claude executor:`, cwErr.message?.slice(0, 200));
+          await spawnClaudeForModule(
+            { moduleId: planMod.moduleId, title: planMod.title, prompt: planMod.prompt, touches: planMod.touches },
+            latest.workspaceDir, latest.config, pipelineCtx
+          );
         }
-      } catch (err) {
-        console.warn(`[Pi→Executor] Module ${moduleId} generation error:`, err);
       }
     }
 
