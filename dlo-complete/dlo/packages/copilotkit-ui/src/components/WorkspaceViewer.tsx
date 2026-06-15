@@ -6,7 +6,7 @@ import { javascript } from "@codemirror/lang-javascript";
 import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { EditorView, ViewUpdate } from "@codemirror/view";
+import type { ViewUpdate } from "@codemirror/view";
 import { RefreshCw, FileCode, MessageSquarePlus, Send, X } from "lucide-react";
 
 const CodeMirror = dynamic(() => import("@uiw/react-codemirror"), { ssr: false });
@@ -228,10 +228,8 @@ export function WorkspaceViewer({ pipelineId, isRunning, onSteer }: Props) {
               {currentFile ? (
                 <CodeMirror
                   value={currentFile.content}
-                  extensions={[
-                    langFor(currentFile.path),
-                    EditorView.updateListener.of(handleEditorUpdate),
-                  ]}
+                  extensions={[langFor(currentFile.path)]}
+                  onUpdate={handleEditorUpdate}
                   theme={oneDark}
                   editable={false}
                   basicSetup={{
