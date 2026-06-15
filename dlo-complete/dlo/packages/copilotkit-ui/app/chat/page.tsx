@@ -608,7 +608,7 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                                   {entry.phase}
                                 </span>
                                 <span className="text-xs text-slate-600 ml-2">
-                                  {format(new Date(entry.timestamp), "HH:mm:ss")}
+                                  {format(new Date(entry.timestamp), "HH:mm:ss.SSS")}
                                 </span>
                               </div>
                             </div>
@@ -1016,8 +1016,9 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
       {/* Settings Modal */}
       {showSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl transition">
-            <div className="flex items-center justify-between border-b border-slate-700 pb-4 mb-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl transition">
+            <div className="flex items-center justify-between border-b border-slate-700 p-6 pb-4 flex-shrink-0">
+
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
                 <Settings className="w-5 h-5 text-blue-400" />
                 Configure Keys & Limits
@@ -1027,7 +1028,7 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
               </button>
             </div>
             
-            <div className="space-y-4 text-sm text-slate-300">
+            <div className="overflow-y-auto flex-1 p-6 pt-4 space-y-4 text-sm text-slate-300">
               <p className="text-xs text-slate-400">
                 Provide credentials/keys to override default environment variables (e.g. GEMINI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY).
               </p>
@@ -1532,8 +1533,8 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                 )}
               </div>
             )}
-
-            <div className="flex items-center justify-end gap-3 border-t border-slate-700 pt-4 mt-6">
+            </div>
+            <div className="flex items-center justify-end gap-3 border-t border-slate-700 p-6 pt-4 flex-shrink-0 bg-slate-900 rounded-b-xl">
               <button
                 disabled={isTesting}
                 onClick={() => runConfigTest(config)}
