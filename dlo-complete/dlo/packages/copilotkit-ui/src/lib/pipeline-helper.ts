@@ -227,8 +227,9 @@ export async function runPlanningBackground(pipelineId: string): Promise<void> {
 
     // Strip ANSI escape codes emitted by the claude CLI
     let jsonText = rawText.replace(/\x1b\[[0-9;]*m/g, "").trim();
-    // If wrapped in a markdown code block, extract the contents
-    const codeBlock = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/);
+    // Greedy match: capture from opening ```(json)? to the LAST ``` in the string.
+    // Must be greedy (not lazy) so nested ``` inside JSON string values don't truncate early.
+    const codeBlock = jsonText.match(/```(?:json)?\s*([\s\S]*)```\s*$/);
     if (codeBlock) {
       jsonText = codeBlock[1].trim();
     } else {
