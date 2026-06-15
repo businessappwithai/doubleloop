@@ -787,18 +787,18 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                     </div>
                   )}
 
-                  {/* Context notes — visible and editable during running phases */}
-                  {["PLANNING_RUNNING", "EXECUTION_RUNNING"].includes(store.pipelineStatus.phase) && (
+                  {/* Context notes — always visible as long as there is a pipeline */}
+                  {store.activePipelineId && (
                     <div>
                       <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Context Notes</p>
                       <div className="bg-slate-900 rounded border border-blue-700/40 p-2 space-y-2">
                         <p className="text-xs text-slate-500">
-                          Add context, constraints, or corrections the agent should consider.
+                          Steer the pipeline at any stage — add constraints, corrections, or new requirements.
                         </p>
                         <textarea
                           value={contextNote}
                           onChange={(e) => setContextNote(e.target.value)}
-                          placeholder="e.g. 'Use React Query v5 hooks syntax' or 'Add dark mode support'…"
+                          placeholder="e.g. 'Skip the filter tabs', 'Use Zustand instead of Context', 'Add dark mode'…"
                           rows={3}
                           className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition resize-none"
                         />
