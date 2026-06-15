@@ -16,7 +16,8 @@ import "@copilotkit/react-ui/styles.css";
 import { useDloStore } from "@/lib/store";
 import { createDloClient } from "@/lib/dlo-client";
 import { format } from "date-fns";
-import { Activity, AlertCircle, CheckCircle, Clock, Zap, Settings, X } from "lucide-react";
+import { Activity, AlertCircle, CheckCircle, Clock, Zap, Settings, X, Code2 } from "lucide-react";
+import { WorkspaceViewer } from "@/components/WorkspaceViewer";
 
 /**
  * Inner component that uses the DLO store and CopilotKit hooks.
@@ -53,6 +54,7 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
   const [contextNote, setContextNote] = useState("");
   const [isSubmittingNote, setIsSubmittingNote] = useState(false);
   const [noteSubmitMsg, setNoteSubmitMsg] = useState<string | null>(null);
+  const [statusTab, setStatusTab] = useState<"status" | "code">("status");
   const [config, setConfig] = useState({
     copilotModel: "gemini-1.5-pro",
     providers: {
@@ -498,7 +500,46 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
             </div>
           ) : (
             /* ── Pipeline Status panel ── */
-            <div className="bg-slate-800 rounded-lg border border-slate-700 p-4 overflow-y-auto">
+            <div className="bg-slate-800 rounded-lg border border-slate-700 flex flex-col overflow-hidden">
+              {/* Tab bar */}
+              <div className="flex items-center border-b border-slate-700 flex-shrink-0">
+                <button
+                  onClick={() => setStatusTab("status")}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition border-b-2 ${
+                    statusTab === "status"
+                      ? "border-blue-400 text-white"
+                      : "border-transparent text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <Activity className="w-4 h-4" /> Status
+                </button>
+                {store.pipelineStatus && ["EXECUTION_RUNNING", "COMPLETED", "FAILED"].includes(store.pipelineStatus.phase) && (
+                  <button
+                    onClick={() => setStatusTab("code")}
+                    className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition border-b-2 ${
+                      statusTab === "code"
+                        ? "border-blue-400 text-white"
+                        : "border-transparent text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    <Code2 className="w-4 h-4" /> Workspace
+                  </button>
+                )}
+              </div>
+
+              {/* Code panel */}
+              {statusTab === "code" && store.activePipelineId && (
+                <div className="flex-1 overflow-hidden min-h-0">
+                  <WorkspaceViewer
+                    pipelineId={store.activePipelineId}
+                    isRunning={store.pipelineStatus?.phase === "EXECUTION_RUNNING"}
+                  />
+                </div>
+              )}
+
+              {/* Status panel */}
+              {statusTab === "status" && (
+              <div className="p-4 overflow-y-auto flex-1">
               <h2 className="text-lg font-semibold text-white mb-4">Pipeline Status</h2>
 
               {!isConnected ? (
@@ -807,6 +848,8 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                 </div>
               ) : (
                 <p className="text-slate-400 text-sm">Initialize a pipeline to get started.</p>
+              )}
+              </div>
               )}
             </div>
           )}

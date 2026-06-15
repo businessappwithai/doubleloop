@@ -299,19 +299,47 @@ export async function runExecutionBackground(pipelineId: string): Promise<void> 
     return;
   }
 
-  // Simulate sequential execution of modules
   for (let i = 0; i < modules.length; i++) {
-    // Reload state in case it was modified or aborted
     const latestState = await getPipeline(pipelineId);
     if (!latestState || latestState.phase === "ABORTED" || latestState.phase === "FAILED") return;
+
+    const moduleId = latestState.board!.modules[i]!.moduleId;
+    const planMod = (latestState.plan?.engineeringPlan?.modules || []).find((m: any) => m.moduleId === moduleId);
 
     latestState.board!.modules[i]!.status = "EXECUTING";
     latestState.board!.modules[i]!.attempts = 1;
     latestState.lastTransitionAt = new Date().toISOString();
     await savePipeline(latestState);
 
-    // Wait 3 seconds
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    // Generate code for each file this module touches
+    if (planMod?.touches?.length) {
+      const supervisorModel = latestState.config?.providers?.supervisor?.model || "claude-haiku-4-5-20251001";
+      for (const relPath of planMod.touches as string[]) {
+        try {
+          const dir = join(latestState.workspaceDir, relPath.split("/").slice(0, -1).join("/"));
+          await mkdir(dir, { recursive: true });
+          const code = await spawnClaude(
+            `Generate the complete, working file contents for: ${relPath}
+
+Module: ${planMod.title}
+Task: ${planMod.prompt}
+Project: ${latestState.projectName}
+Objectives: ${latestState.objectivesMarkdown}
+
+Rules:
+- Return ONLY the raw file contents — no markdown fences, no explanation, no comments about what you're generating.
+- Use TypeScript + React (functional components, hooks).
+- The file must be syntactically complete and import what it needs.`,
+            supervisorModel,
+            latestState.workspaceDir
+          );
+          await writeFile(join(latestState.workspaceDir, relPath), code, "utf-8");
+          console.log(`[Executor] Generated ${relPath} for module ${moduleId}`);
+        } catch (err) {
+          console.warn(`[Executor] Failed to generate ${relPath}:`, err);
+        }
+      }
+    }
 
     // Reload again
     const latestState2 = await getPipeline(pipelineId);
