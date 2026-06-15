@@ -16,7 +16,7 @@ import "@copilotkit/react-ui/styles.css";
 import { useDloStore } from "@/lib/store";
 import { createDloClient } from "@/lib/dlo-client";
 import { format } from "date-fns";
-import { Activity, AlertCircle, CheckCircle, Clock, Zap, Settings, X, Code2 } from "lucide-react";
+import { Activity, AlertCircle, CheckCircle, Clock, Zap, Settings, X, Code2, Database, FlaskConical, Rocket, ExternalLink, ShieldCheck } from "lucide-react";
 import { WorkspaceViewer } from "@/components/WorkspaceViewer";
 
 /**
@@ -279,7 +279,7 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
     const params = pendingPipelineParams ?? {
       projectName: manualProjectName || "New Project",
       objectivesMarkdown: manualObjectives || "Build the project as described in the research below.",
-      workspaceDir: "/tmp/dlo-workspace",
+      workspaceDir: "",
     };
     await store.initPipeline({
       ...params,
@@ -291,14 +291,15 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
     setManualResearch("");
   };
 
-  const handleGateResolve = async () => {
+  const handleGateResolve = async (overrideDecision?: "APPROVE" | "STEER" | "REJECT") => {
     const gate = store.pipelineStatus?.activeGate;
-    if (!gate || !gateDecision) return;
+    const decision = overrideDecision || gateDecision;
+    if (!gate || !decision) return;
     setGateSubmitting(true);
     try {
-      await store.resolveGate(gate.gateId as any, gateDecision, {
-        instructions: gateDecision === "STEER" ? gateInstructions : undefined,
-        reason: gateDecision === "REJECT" ? gateReason : undefined,
+      await store.resolveGate(gate.gateId as any, decision, {
+        instructions: decision === "STEER" ? gateInstructions : undefined,
+        reason: decision === "REJECT" ? gateReason : undefined,
       });
       setGateDecision(null);
       setGateInstructions("");
@@ -307,6 +308,17 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
     } finally {
       setGateSubmitting(false);
     }
+  };
+
+  const handleWorkspaceSteer = async (file: string, fromLine: number, toLine: number, instruction: string) => {
+    if (!store.activePipelineId) return;
+    const lineRef = fromLine === toLine ? `line ${fromLine}` : `lines ${fromLine}–${toLine}`;
+    const note = `[Workspace: ${file} ${lineRef}]: ${instruction}`;
+    await fetch(`/api/pipelines/${store.activePipelineId}/context`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note }),
+    });
   };
 
   const submitContextNote = async () => {
@@ -513,7 +525,7 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                 >
                   <Activity className="w-4 h-4" /> Status
                 </button>
-                {store.pipelineStatus && ["EXECUTION_RUNNING", "COMPLETED", "FAILED"].includes(store.pipelineStatus.phase) && (
+                {store.pipelineStatus && ["EXECUTION_RUNNING", "DB_PROVISIONING_RUNNING", "TESTING_RUNNING", "APP_LAUNCH_RUNNING", "COMPLETED", "FAILED"].includes(store.pipelineStatus.phase) && (
                   <button
                     onClick={() => setStatusTab("code")}
                     className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition border-b-2 ${
@@ -532,7 +544,8 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                 <div className="flex-1 overflow-hidden min-h-0">
                   <WorkspaceViewer
                     pipelineId={store.activePipelineId}
-                    isRunning={store.pipelineStatus?.phase === "EXECUTION_RUNNING"}
+                    isRunning={["EXECUTION_RUNNING", "DB_PROVISIONING_RUNNING", "TESTING_RUNNING", "APP_LAUNCH_RUNNING"].includes(store.pipelineStatus?.phase ?? "")}
+                    onSteer={handleWorkspaceSteer}
                   />
                 </div>
               )}
@@ -605,10 +618,91 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                     </div>
                   ) : null}
 
-                  {/* Gate review */}
-                  {store.pipelineStatus.activeGate && (
+                  {/* Gate review — Tool Install Permission (CodeWhale / OCR) */}
+                  {store.pipelineStatus.activeGate?.kind === "TOOL_INSTALL_PERMISSION" && (
+                    <div className="rounded-lg border border-violet-700/60 bg-violet-900/20 overflow-hidden">
+                      <div className="bg-violet-900/40 border-b border-violet-700/60 px-3 py-2 flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-violet-300 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-violet-200">AI Tools Required</p>
+                          <p className="text-xs text-violet-300/70">Install CodeWhale + open-code-review, or use Claude Haiku as the sub-agent</p>
+                        </div>
+                      </div>
+                      <div className="p-3">
+                        <pre className="text-xs text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">
+                          {String(store.pipelineStatus.activeGate.exhibits[0] ?? "")}
+                        </pre>
+                      </div>
+                      <div className="px-3 pb-3 flex gap-2">
+                        <button
+                          disabled={gateSubmitting}
+                          className="flex-1 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-xs font-semibold rounded transition"
+                          onClick={() => handleGateResolve("APPROVE")}
+                        >
+                          {gateSubmitting ? "Installing…" : "Install Tools"}
+                        </button>
+                        <button
+                          disabled={gateSubmitting}
+                          className="flex-1 py-2 bg-blue-700 hover:bg-blue-600 text-blue-100 text-xs font-semibold rounded transition"
+                          onClick={() => handleGateResolve("USE_CLAUDE" as any)}
+                        >
+                          Use Claude Haiku
+                        </button>
+                        <button
+                          disabled={gateSubmitting}
+                          className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-semibold rounded transition"
+                          onClick={() => handleGateResolve("REJECT")}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Gate review — Terminal Permission (db/test/launch approval) */}
+                  {store.pipelineStatus.activeGate?.kind === "TERMINAL_PERMISSION" && (
+                    <div className="rounded-lg border border-blue-700/60 bg-blue-900/20 overflow-hidden">
+                      <div className="bg-blue-900/40 border-b border-blue-700/60 px-3 py-2 flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-blue-300 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-blue-200">
+                            Permission Required: {String(store.pipelineStatus.activeGate.exhibits[0] ?? "")}
+                          </p>
+                          <p className="text-xs text-blue-300/70">Approve to allow · Skip to proceed without this step</p>
+                        </div>
+                      </div>
+                      <div className="max-h-40 overflow-y-auto p-3">
+                        <pre className="text-xs text-slate-200 whitespace-pre-wrap font-mono leading-relaxed">
+                          {String(store.pipelineStatus.activeGate.exhibits[1] ?? "")}
+                        </pre>
+                      </div>
+                      {store.pipelineStatus.activeGate.exhibits[2] != null && (
+                        <div className="px-3 pb-2">
+                          <p className="text-xs text-slate-400">{String(store.pipelineStatus.activeGate.exhibits[2] as string)}</p>
+                        </div>
+                      )}
+                      <div className="px-3 pb-3 flex gap-2">
+                        <button
+                          disabled={gateSubmitting}
+                          className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded transition"
+                          onClick={() => handleGateResolve("APPROVE")}
+                        >
+                          {gateSubmitting ? "Running…" : "Approve & Run"}
+                        </button>
+                        <button
+                          disabled={gateSubmitting}
+                          className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-semibold rounded transition"
+                          onClick={() => handleGateResolve("REJECT")}
+                        >
+                          Skip
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Gate review — Standard HITL (DOMAIN_DOCUMENT / TRIPARTITE_PLAN) */}
+                  {store.pipelineStatus.activeGate && store.pipelineStatus.activeGate.kind !== "TERMINAL_PERMISSION" && store.pipelineStatus.activeGate.kind !== "TOOL_INSTALL_PERMISSION" && (
                     <div className="rounded-lg border border-amber-700/60 bg-amber-900/20 overflow-hidden">
-                      {/* Header */}
                       <div className="bg-amber-900/40 border-b border-amber-700/60 px-3 py-2 flex items-center gap-2">
                         <AlertCircle className="w-4 h-4 text-amber-300 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
@@ -621,7 +715,6 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                         </div>
                       </div>
 
-                      {/* Exhibit tabs (TRIPARTITE_PLAN only) */}
                       {store.pipelineStatus.activeGate.kind === "TRIPARTITE_PLAN" && (
                         <div className="flex border-b border-amber-700/40">
                           {["CEO Plan", "Architecture", "Engineering"].map((label, i) => (
@@ -640,14 +733,12 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                         </div>
                       )}
 
-                      {/* Exhibit content */}
                       <div className="max-h-48 overflow-y-auto p-3">
                         <pre className="text-xs text-slate-200 whitespace-pre-wrap font-mono leading-relaxed">
                           {String((store.pipelineStatus.activeGate.exhibits as any[])[gateExhibitTab] ?? "")}
                         </pre>
                       </div>
 
-                      {/* STEER instructions textarea */}
                       {gateDecision === "STEER" && (
                         <div className="px-3 pb-2">
                           <textarea
@@ -660,7 +751,6 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                         </div>
                       )}
 
-                      {/* REJECT reason textarea */}
                       {gateDecision === "REJECT" && (
                         <div className="px-3 pb-2">
                           <textarea
@@ -673,12 +763,11 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                         </div>
                       )}
 
-                      {/* Action buttons */}
                       <div className="px-3 pb-3 flex gap-2">
                         {gateDecision ? (
                           <>
                             <button
-                              onClick={handleGateResolve}
+                              onClick={() => handleGateResolve()}
                               disabled={
                                 gateSubmitting ||
                                 (gateDecision === "STEER" && !gateInstructions.trim()) ||
@@ -765,6 +854,74 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                           </p>
                         )}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Test Results */}
+                  {(store.pipelineStatus as any).testResults && (
+                    <div>
+                      <p className="text-xs text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-1">
+                        <FlaskConical className="w-3 h-3" /> Test Results
+                      </p>
+                      <div className={`rounded px-3 py-2 border ${(store.pipelineStatus as any).testResults.passed ? "border-green-700/60 bg-green-900/20" : "border-red-700/60 bg-red-900/20"}`}>
+                        <div className="flex items-center gap-2 text-xs">
+                          {(store.pipelineStatus as any).testResults.passed
+                            ? <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
+                            : <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />}
+                          <span className={`font-semibold ${(store.pipelineStatus as any).testResults.passed ? "text-green-300" : "text-red-300"}`}>
+                            {(store.pipelineStatus as any).testResults.passed ? "Tests Passed" : "Tests Failed"}
+                          </span>
+                          <span className="text-slate-500 ml-auto">
+                            {((store.pipelineStatus as any).testResults.durationMs / 1000).toFixed(1)}s
+                          </span>
+                        </div>
+                        {(store.pipelineStatus as any).testResults.supervisorReasoning && (
+                          <p className="text-xs text-slate-400 mt-1 italic">
+                            Supervisor: {(store.pipelineStatus as any).testResults.supervisorReasoning}
+                          </p>
+                        )}
+                        {(store.pipelineStatus as any).testResults.output && (
+                          <details className="mt-1">
+                            <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-300">View output</summary>
+                            <pre className="text-xs text-slate-400 whitespace-pre-wrap font-mono mt-1 max-h-32 overflow-y-auto">
+                              {(store.pipelineStatus as any).testResults.output.slice(-1000)}
+                            </pre>
+                          </details>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* DB Connection */}
+                  {(store.pipelineStatus as any).dbConnectionString && (
+                    <div>
+                      <p className="text-xs text-slate-400 uppercase tracking-wide mb-1 flex items-center gap-1">
+                        <Database className="w-3 h-3" /> Database
+                      </p>
+                      <div className="bg-slate-900 rounded px-2 py-1.5 border border-slate-700/50">
+                        <p className="text-xs font-mono text-green-400 break-all">
+                          {(store.pipelineStatus as any).dbConnectionString}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Running App */}
+                  {(store.pipelineStatus as any).appUrl && (
+                    <div>
+                      <p className="text-xs text-slate-400 uppercase tracking-wide mb-1 flex items-center gap-1">
+                        <Rocket className="w-3 h-3" /> Application
+                      </p>
+                      <a
+                        href={(store.pipelineStatus as any).appUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 bg-green-900/30 border border-green-700/50 rounded px-3 py-2 text-xs text-green-300 hover:bg-green-900/50 transition group"
+                      >
+                        <Rocket className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="truncate font-mono">{(store.pipelineStatus as any).appUrl}</span>
+                        <ExternalLink className="w-3 h-3 flex-shrink-0 opacity-50 group-hover:opacity-100 transition ml-auto" />
+                      </a>
                     </div>
                   )}
 

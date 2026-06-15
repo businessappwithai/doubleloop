@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { savePipeline, runResearchBackground } from "@/lib/pipeline-helper";
 
 export async function POST(request: Request) {
@@ -17,6 +19,12 @@ export async function POST(request: Request) {
     const pipelineId = uuidv4();
     const now = new Date().toISOString();
 
+    // Each pipeline gets its own isolated workspace directory
+    const resolvedWorkspaceDir = workspaceDir && workspaceDir.trim()
+      ? workspaceDir.trim()
+      : join(process.cwd(), "workspaces", pipelineId);
+    try { mkdirSync(resolvedWorkspaceDir, { recursive: true }); } catch { /* ignore */ }
+
     const hasManualResearch = typeof researchMarkdown === "string" && researchMarkdown.trim().length > 0;
 
     const initialPhase = hasManualResearch ? "GATE1_PENDING" : "RESEARCH_RUNNING";
@@ -24,7 +32,7 @@ export async function POST(request: Request) {
       pipelineId,
       projectName,
       objectivesMarkdown,
-      workspaceDir: workspaceDir || process.cwd(),
+      workspaceDir: resolvedWorkspaceDir,
       config: config || {},
       phase: initialPhase,
       createdAt: now,
