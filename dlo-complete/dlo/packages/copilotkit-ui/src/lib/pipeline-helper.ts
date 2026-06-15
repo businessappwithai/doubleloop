@@ -366,43 +366,17 @@ export async function runExecutionBackground(pipelineId: string): Promise<void> 
 
 function getPlanningPrompt(state: PipelineState): string {
   return `You are the Planning Agent of the Double-Loop Orchestrator.
-Based on the project objectives and Domain Research Document below, generate a Tripartite Plan.
-Project Name: ${state.projectName}
-Objectives:
-${state.objectivesMarkdown}
+Project: ${state.projectName}
+Objectives: ${state.objectivesMarkdown.slice(0, 300)}
+Research summary: ${(state.domainDocument?.markdown || "").slice(0, 500)}
 
-Domain Research:
-${state.domainDocument?.markdown || ""}
+Respond with ONLY a JSON object — no markdown, no code fences, no explanation. The JSON must be valid and complete.
 
-You must respond with a JSON object containing exactly three fields:
-1. "ceoPlan": A high-level business and strategic plan (Markdown string).
-2. "architecturePlan": A detailed system architecture and component plan (Markdown string).
-3. "engineeringPlan": A JSON object representing the technical modules to be built. It must match the following structure:
-{
-  "planVersion": 1,
-  "generatedBy": "DLO Planner",
-  "modules": [
-    {
-      "moduleId": "string",
-      "title": "string",
-      "stackTarget": "string",
-      "prompt": "string (MUST be at least 40 characters long for validation rules)",
-      "dependsOn": ["array of moduleIds"],
-      "estimatedComplexity": "easy" | "standard" | "hard",
-      "maxAttempts": 3,
-      "exitClauses": [
-        {
-          "clauseId": "string",
-          "description": "string",
-          "kind": "command",
-          "argv": ["array of command args"],
-          "expect": { "exitCode": 0 }
-        }
-      ],
-      "touches": ["array of filepaths"]
-    }
-  ]
-}
+Rules:
+- ceoPlan: 1-2 sentence business summary (string)
+- architecturePlan: 1-2 sentence technical summary (string)
+- engineeringPlan: exactly 3 modules maximum, each with short prompts under 100 chars
 
-Ensure your response is valid JSON and nothing else. Do not wrap in markdown code blocks.`;
+Required structure (copy exactly):
+{"ceoPlan":"string","architecturePlan":"string","engineeringPlan":{"planVersion":1,"generatedBy":"DLO Planner","modules":[{"moduleId":"m1","title":"string","stackTarget":"frontend","prompt":"string at least 40 chars describing what to build","dependsOn":[],"estimatedComplexity":"easy","maxAttempts":3,"exitClauses":[{"clauseId":"c1","description":"build passes","kind":"command","argv":["npm","run","build"],"expect":{"exitCode":0}}],"touches":["src/App.tsx"]}]}}`;
 }
