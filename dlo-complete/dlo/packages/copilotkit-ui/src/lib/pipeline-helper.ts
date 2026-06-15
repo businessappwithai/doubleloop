@@ -7,7 +7,7 @@ async function spawnClaude(prompt: string, model: string, workspaceDir?: string)
   const cwd = workspaceDir || process.cwd();
   await mkdir(cwd, { recursive: true });
   return new Promise((resolve, reject) => {
-    const child = spawn("claude", ["-p", prompt, "--model", model], {
+    const child = spawn("claude", ["-p", prompt, "--model", model, "--output-format", "json"], {
       env: process.env,
       cwd,
     });
@@ -17,8 +17,16 @@ async function spawnClaude(prompt: string, model: string, workspaceDir?: string)
     child.stderr.on("data", (d: Buffer) => { err += d.toString(); });
     child.on("error", reject);
     child.on("close", (code: number | null) => {
-      if (code === 0) resolve(out.trim());
-      else reject(new Error(`claude exited ${code}: ${err.trim() || out.trim()}`));
+      if (code !== 0) {
+        reject(new Error(`claude exited ${code}: ${err.trim() || out.trim()}`));
+        return;
+      }
+      try {
+        const parsed = JSON.parse(out.trim());
+        resolve(parsed.result ?? out.trim());
+      } catch {
+        resolve(out.trim());
+      }
     });
   });
 }
