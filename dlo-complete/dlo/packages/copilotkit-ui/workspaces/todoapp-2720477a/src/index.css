@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply antialiased;
+  }
+
+  input {
+    @apply focus:outline-none focus:ring-2 focus:ring-blue-500;
+  }
+
+  button {
+    @apply transition-colors duration-200;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 active:bg-blue-700;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 active:bg-gray-400;
+  }
+
+  .btn-danger {
+    @apply px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 active:bg-red-700;
+  }
+
+  .btn-sm {
+    @apply px-2 py-1 text-sm;
+  }
+
+  .input-base {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500;
+  }
+
+  .card {
+    @apply rounded-lg border border-gray-200 bg-white shadow-sm;
+  }
+
+  .todo-item {
+    @apply p-3 bg-white border border-gray-200 rounded-lg flex items-center gap-3 hover:shadow-md transition-shadow;
+  }
+}
+
+@layer utilities {
+  .fade-in {
+    animation: fadeIn 0.3s ease-in-out;
+  }
+
+  .fade-out {
+    animation: fadeOut 0.3s ease-in-out;
+  }
+
+  .slide-in {
+    animation: slideIn 0.3s ease-out;
+  }
+
+  .slide-out {
+    animation: slideOut 0.3s ease-in;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(-4px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOut {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-4px);
+    opacity: 0;
+  }
+}

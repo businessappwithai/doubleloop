@@ -1,0 +1,85 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - heading "DLO Pipeline Controller" [level=1] [ref=e6]:
+          - img [ref=e7]
+          - text: DLO Pipeline Controller
+        - paragraph [ref=e9]: Autonomous development pipeline orchestrator
+      - generic [ref=e10]:
+        - button "Config Keys & Limits" [ref=e11] [cursor=pointer]:
+          - img [ref=e12]
+          - text: Config Keys & Limits
+        - generic [ref=e16]:
+          - generic [ref=e17]: Phase
+          - generic [ref=e18]: FAILED
+    - generic [ref=e23]:
+      - img [ref=e24]
+      - generic [ref=e26]:
+        - text: No Gemini API key configured. Chat requires a key — add it in
+        - button "Config Keys & Limits" [ref=e27] [cursor=pointer]
+        - text: or set
+        - code [ref=e28]: GEMINI_API_KEY
+        - text: in your environment.
+    - generic [ref=e31]:
+      - generic [ref=e32]:
+        - button "Status" [ref=e33] [cursor=pointer]:
+          - img [ref=e34]
+          - text: Status
+        - button "Workspace" [ref=e152] [cursor=pointer]:
+          - img [ref=e153]
+          - text: Workspace
+      - generic [ref=e36]:
+        - heading "Pipeline Status" [level=2] [ref=e37]
+        - generic [ref=e38]:
+          - generic [ref=e39]:
+            - paragraph [ref=e40]: Pipeline ID
+            - paragraph [ref=e41]: fcdd65d7-684a-4f62-a0e5-0b0ac1aeb5f9
+          - generic [ref=e42]:
+            - paragraph [ref=e43]: Phase
+            - generic [ref=e44]:
+              - paragraph [ref=e45]: FAILED
+              - paragraph [ref=e189]: "DB provisioning failed: Command failed: docker run -d --name dlo-pg-fcdd65d7 -e POSTGRES_PASSWORD=dlopassword -e POSTGRES_DB=dlo_app -e POSTGRES_USER=dlo -p 5433:5432 postgres:17-alpine docker: Cannot connect to the Docker daemon at unix:///Users/pramodkoshy/.docker/run/docker.sock. Is the docker daemon running? Run 'docker run --help' for more information"
+          - generic [ref=e46]:
+            - paragraph [ref=e47]: History
+            - generic [ref=e48]:
+              - generic [ref=e51]: GATE1_PENDING16:26:36
+              - generic [ref=e92]: PLANNING_RUNNING16:32:19
+              - generic [ref=e99]: GATE2_PENDING16:32:39
+              - generic [ref=e161]: EXECUTION_RUNNING16:33:18
+              - generic [ref=e164]: DB_PROVISIONING_RUNNING16:33:38
+              - generic [ref=e193]: FAILED16:34:06
+          - generic [ref=e117]:
+            - paragraph [ref=e118]: Modules
+            - generic [ref=e119]:
+              - generic [ref=e120]:
+                - generic [ref=e121]:
+                  - img [ref=e180]
+                  - generic [ref=e125]: PostgreSQL Database Setup
+                  - generic [ref=e126]: ×1
+                - generic [ref=e127]: src/db.ts
+              - generic [ref=e128]:
+                - generic [ref=e129]:
+                  - img [ref=e183]
+                  - generic [ref=e133]: Express CRUD REST API
+                  - generic [ref=e134]: ×1
+                - generic [ref=e135]: src/index.ts
+              - generic [ref=e136]:
+                - generic [ref=e137]:
+                  - img [ref=e186]
+                  - generic [ref=e141]: Vanilla HTML Frontend & Jest Tests
+                  - generic [ref=e142]: ×1
+                - generic [ref=e143]: public/index.html
+          - generic [ref=e65]:
+            - paragraph [ref=e66]: Context Notes
+            - generic [ref=e67]:
+              - paragraph [ref=e68]: Steer the pipeline at any stage — add constraints, corrections, or new requirements.
+              - textbox "e.g. 'Skip the filter tabs', 'Use Zustand instead of Context', 'Add dark mode'…" [ref=e69]
+              - button "Send Note" [disabled] [ref=e71]
+          - generic [ref=e72]:
+            - paragraph [ref=e73]: "Created: Jun 15, 16:26:36"
+            - paragraph [ref=e74]: "Updated: Jun 15, 16:34:06"
+    - paragraph [ref=e76]: DLO v0.1.0 · Double-Loop Orchestrator for autonomous development · 🚀
+  - button "Open Next.js Dev Tools" [ref=e83] [cursor=pointer]:
+    - img [ref=e84]
+  - alert [ref=e77]

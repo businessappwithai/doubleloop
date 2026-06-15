@@ -1,0 +1,41 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - heading "DLO Pipeline Controller" [level=1] [ref=e6]:
+          - img [ref=e7]
+          - text: DLO Pipeline Controller
+        - paragraph [ref=e9]: Autonomous development pipeline orchestrator
+      - generic [ref=e10]:
+        - button "Config Keys & Limits" [ref=e11] [cursor=pointer]:
+          - img [ref=e12]
+          - text: Config Keys & Limits
+        - generic [ref=e57]:
+          - generic [ref=e58]: Phase
+          - generic [ref=e59]: FAILED
+    - generic [ref=e16]:
+      - img [ref=e17]
+      - generic [ref=e19]:
+        - text: No Gemini API key configured. Chat requires a key — add it in
+        - button "Config Keys & Limits" [ref=e20] [cursor=pointer]
+        - text: or set
+        - code [ref=e21]: GEMINI_API_KEY
+        - text: in your environment.
+    - generic [ref=e24]:
+      - heading "Pipeline Status" [level=2] [ref=e63]
+      - generic [ref=e31]:
+        - generic [ref=e32]:
+          - paragraph [ref=e64]: Pipeline ID
+          - paragraph [ref=e65]: 2686b8e4-e367-4064-9c46-1f7c78021afc
+        - generic [ref=e35]:
+          - paragraph [ref=e66]: Phase
+          - generic [ref=e67]:
+            - paragraph [ref=e68]: FAILED
+            - paragraph [ref=e86]: Unterminated string in JSON at position 1383
+        - generic [ref=e81]:
+          - paragraph [ref=e82]: "Created: Jun 15, 14:07:30"
+          - paragraph [ref=e83]: "Updated: Jun 15, 14:08:47"
+    - paragraph [ref=e45]: DLO v0.1.0 · Double-Loop Orchestrator for autonomous development · 🚀
+  - button "Open Next.js Dev Tools" [ref=e52] [cursor=pointer]:
+    - img [ref=e53]
+  - alert [ref=e46]

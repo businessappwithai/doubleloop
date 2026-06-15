@@ -1,0 +1,67 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - heading "DLO Pipeline Controller" [level=1] [ref=e6]:
+          - img [ref=e7]
+          - text: DLO Pipeline Controller
+        - paragraph [ref=e9]: Autonomous development pipeline orchestrator
+      - generic [ref=e10]:
+        - button "Config Keys & Limits" [ref=e11] [cursor=pointer]:
+          - img [ref=e12]
+          - text: Config Keys & Limits
+        - generic [ref=e56]:
+          - generic [ref=e57]:
+            - generic [ref=e58]: Phase
+            - generic [ref=e59]: GATE1_PENDING
+          - generic [ref=e60]:
+            - generic [ref=e61]: HITL Gate Open
+            - generic [ref=e62]: DOMAIN_DOCUMENT
+    - generic [ref=e16]:
+      - img [ref=e17]
+      - generic [ref=e19]:
+        - text: No Gemini API key configured. Chat requires a key — add it in
+        - button "Config Keys & Limits" [ref=e20] [cursor=pointer]
+        - text: or set
+        - code [ref=e21]: GEMINI_API_KEY
+        - text: in your environment.
+    - generic [ref=e24]:
+      - button "Status" [ref=e63] [cursor=pointer]:
+        - img [ref=e64]
+        - text: Status
+      - generic [ref=e66]:
+        - heading "Pipeline Status" [level=2] [ref=e67]
+        - generic [ref=e68]:
+          - generic [ref=e69]:
+            - paragraph [ref=e70]: Pipeline ID
+            - paragraph [ref=e71]: fcdd65d7-684a-4f62-a0e5-0b0ac1aeb5f9
+          - generic [ref=e72]:
+            - paragraph [ref=e73]: Phase
+            - paragraph [ref=e75]: GATE1_PENDING
+          - generic [ref=e76]:
+            - paragraph [ref=e77]: History
+            - generic [ref=e81]: GATE1_PENDING16:26:36
+          - generic [ref=e82]:
+            - generic [ref=e83]:
+              - img [ref=e84]
+              - generic [ref=e86]:
+                - paragraph [ref=e87]: "Review: Domain Document"
+                - paragraph [ref=e88]: Approve to proceed · Steer to revise · Reject to fail
+            - generic [ref=e90]: "# TodoApp — Domain Research Document ## Tech Stack - **Runtime**: Node.js 20, TypeScript - **Framework**: Express.js 4.x - **Database**: PostgreSQL 17 via `pg` npm package (NOT React, NOT localStorage) - **Frontend**: Single `public/index.html` — vanilla HTML + CSS + fetch() - **Testing**: Jest + supertest - **Start**: `ts-node src/index.ts` on PORT=3001 ## Database Schema ```sql CREATE TABLE IF NOT EXISTS todos ( id SERIAL PRIMARY KEY, title VARCHAR(255) NOT NULL, description TEXT DEFAULT '', completed BOOLEAN NOT NULL DEFAULT false, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW() ); ``` ## REST API | Method | Path | Body | Response | |--------|------|------|----------| | GET | /api/todos | — | 200 [{id,title,description,completed,created_at}] | | POST | /api/todos | {title,description?} | 201 {todo} | | PATCH | /api/todos/:id | {title?,description?,completed?} | 200 {todo} | | DELETE | /api/todos/:id | — | 204 | ## Files to Generate ``` package.json ← dependencies: express pg cors dotenv; devDeps: typescript ts-node nodemon jest supertest @types/* tsconfig.json .env.example ← DATABASE_URL=postgresql://dlo:dlopassword@localhost:5433/dlo_app PORT=3001 migrations/ 001_create_todos.sql src/ index.ts ← Express app, serves /api/todos routes + static public/ db.ts ← pg Pool using process.env.DATABASE_URL routes/ todos.ts ← GET/POST/PATCH/DELETE handlers public/ index.html ← Full SPA: fetch /api/todos, add/toggle/delete UI tests/ todos.test.ts ← Jest + supertest: GET, POST, PATCH, DELETE ``` ## Environment Variables ``` DATABASE_URL=postgresql://dlo:dlopassword@localhost:5433/dlo_app PORT=3001 ``` ## Key Constraints - Do NOT generate any React, JSX, or frontend framework code - Do NOT use localStorage — all data lives in PostgreSQL - package.json MUST include ts-node, typescript, nodemon, jest, supertest in devDependencies"
+            - generic [ref=e91]:
+              - button "Approve" [ref=e92] [cursor=pointer]
+              - button "Steer" [ref=e93] [cursor=pointer]
+              - button "Reject" [ref=e94] [cursor=pointer]
+          - generic [ref=e95]:
+            - paragraph [ref=e96]: Context Notes
+            - generic [ref=e97]:
+              - paragraph [ref=e98]: Steer the pipeline at any stage — add constraints, corrections, or new requirements.
+              - textbox "e.g. 'Skip the filter tabs', 'Use Zustand instead of Context', 'Add dark mode'…" [ref=e99]
+              - button "Send Note" [disabled] [ref=e101]
+          - generic [ref=e102]:
+            - paragraph [ref=e103]: "Created: Jun 15, 16:26:36"
+            - paragraph [ref=e104]: "Updated: Jun 15, 16:26:36"
+    - paragraph [ref=e45]: DLO v0.1.0 · Double-Loop Orchestrator for autonomous development · 🚀
+  - button "Open Next.js Dev Tools" [ref=e52] [cursor=pointer]:
+    - img [ref=e53]
+  - alert [ref=e46]: DLO — Double-Loop Orchestrator

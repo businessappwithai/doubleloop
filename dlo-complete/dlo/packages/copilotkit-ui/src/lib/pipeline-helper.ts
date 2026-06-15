@@ -7,6 +7,30 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const execFileAsync = promisify(execFile);
 
+// ─── Database Service Client ──────────────────────────────────────────────────
+
+const DB_SERVICE_URL = process.env.DB_SERVICE_URL || "http://localhost:3099";
+
+async function dbCall(
+  method: string,
+  path: string,
+  body?: any
+): Promise<any> {
+  try {
+    const opts: RequestInit = {
+      method,
+      headers: { "Content-Type": "application/json" },
+    };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch(`${DB_SERVICE_URL}${path}`, opts);
+    if (!res.ok) throw new Error(`DB: ${res.status}`);
+    return await res.json();
+  } catch (e: any) {
+    console.warn(`[DB] ${method} ${path} failed:`, e.message);
+    return null;
+  }
+}
+
 // ─── Claude Code CLI (supervisor + planner) ───────────────────────────────────
 
 async function spawnClaude(prompt: string, model: string, workspaceDir?: string): Promise<string> {
@@ -629,6 +653,30 @@ export function pushPhaseHistory(state: PipelineState, phase: string): void {
 const getPipelinesDir = () => join(process.cwd(), ".dlo/pipelines");
 
 export async function savePipeline(state: PipelineState): Promise<void> {
+  // Try DB first (dual-write for safety)
+  try {
+    const existing = await getPipeline(state.pipelineId);
+    if (!existing) {
+      await dbCall("POST", "/pipelines", {
+        pipelineId: state.pipelineId,
+        projectName: state.projectName,
+        objectivesMarkdown: state.objectivesMarkdown,
+        workspaceDir: state.workspaceDir,
+        config: state.config,
+      });
+    } else {
+      await dbCall("PATCH", `/pipelines/${state.pipelineId}`, {
+        phase: state.phase,
+        error_message: state.error,
+        app_url: state.appUrl,
+        db_connection_string: state.dbConnectionString,
+        db_container_id: state.dbContainerId,
+      });
+    }
+  } catch (e: any) {
+    console.warn("[DB] savePipeline failed:", e.message);
+  }
+
   const dir = getPipelinesDir();
   await mkdir(dir, { recursive: true });
   await writeFile(join(dir, `${state.pipelineId}.json`), JSON.stringify(state, null, 2), "utf-8");
@@ -662,6 +710,30 @@ async function writeHandoff(state: PipelineState): Promise<void> {
 }
 
 export async function getPipeline(pipelineId: string): Promise<PipelineState | null> {
+  // Try DB first
+  try {
+    const dbState = await dbCall("GET", `/pipelines/${pipelineId}`);
+    if (dbState) {
+      return {
+        pipelineId: dbState.id,
+        projectName: dbState.project_name,
+        objectivesMarkdown: dbState.objectives_markdown,
+        workspaceDir: dbState.workspace_dir,
+        phase: dbState.phase,
+        config: dbState.config_json,
+        createdAt: dbState.created_at,
+        lastTransitionAt: dbState.updated_at,
+        error: dbState.error_message,
+        appUrl: dbState.app_url,
+        dbConnectionString: dbState.db_connection_string,
+        dbContainerId: dbState.db_container_id,
+      } as PipelineState;
+    }
+  } catch (e: any) {
+    // DB failed, try local file
+  }
+
+  // Fallback to local file
   try {
     const content = await readFile(join(getPipelinesDir(), `${pipelineId}.json`), "utf-8");
     return JSON.parse(content);
@@ -671,6 +743,24 @@ export async function getPipeline(pipelineId: string): Promise<PipelineState | n
 }
 
 export async function listAllPipelines(): Promise<PipelineState[]> {
+  // Try DB first
+  try {
+    const dbPipelines = await dbCall("GET", "/pipelines");
+    if (dbPipelines && Array.isArray(dbPipelines)) {
+      return dbPipelines.map((p: any) => ({
+        pipelineId: p.id,
+        projectName: p.project_name,
+        phase: p.phase,
+        createdAt: p.created_at,
+        lastTransitionAt: p.updated_at,
+        workspaceDir: p.workspace_dir,
+      })) as PipelineState[];
+    }
+  } catch (e: any) {
+    console.warn("[DB] listAllPipelines from DB failed, using local files");
+  }
+
+  // Fallback to local files
   try {
     const dir = getPipelinesDir();
     await mkdir(dir, { recursive: true });
@@ -1324,7 +1414,18 @@ export async function runAppLaunchBackground(
       return;
     }
 
-    // Permission granted — launch the app
+    // Permission granted — install deps then launch
+    console.log(`[App] Running npm install in ${state.workspaceDir}`);
+    try {
+      await execFileAsync("npm", ["install", "--prefer-offline", "--no-audit", "--no-fund"], {
+        cwd: state.workspaceDir,
+        timeout: 120_000,
+        env: { ...process.env, NODE_ENV: "development" },
+      });
+    } catch (e: any) {
+      console.warn("[App] npm install warning:", e.message?.slice(0, 200));
+    }
+
     console.log(`[App] Launching: ${launchCmd.cmd} ${launchCmd.args.join(" ")} in ${state.workspaceDir}`);
 
     const child = spawn(launchCmd.cmd, launchCmd.args, {

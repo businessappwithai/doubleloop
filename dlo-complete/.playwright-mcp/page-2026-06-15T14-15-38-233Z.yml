@@ -1,0 +1,16 @@
+- generic [ref=e4]:
+  - img [ref=e6]
+  - heading "ERDwithAI" [level=1] [ref=e11]
+  - generic [ref=e12]:
+    - button "Sign In" [ref=e13]:
+      - img [ref=e14]
+      - text: Sign In
+    - button "Create Account" [ref=e17]
+  - generic [ref=e18]:
+    - generic [ref=e19]:
+      - generic [ref=e20]: Email
+      - textbox [ref=e21]
+    - generic [ref=e22]:
+      - generic [ref=e23]: Password
+      - textbox [ref=e24]
+    - button "Sign In" [ref=e25]

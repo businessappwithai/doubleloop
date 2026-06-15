@@ -1,0 +1,122 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - heading "DLO Pipeline Controller" [level=1] [ref=e6]:
+          - img [ref=e7]
+          - text: DLO Pipeline Controller
+        - paragraph [ref=e9]: Autonomous development pipeline orchestrator
+      - generic [ref=e10]:
+        - button "Config Keys & Limits" [ref=e11] [cursor=pointer]:
+          - img [ref=e12]
+          - text: Config Keys & Limits
+        - generic [ref=e57]:
+          - generic [ref=e58]: Phase
+          - generic [ref=e59]: EXECUTION_RUNNING
+    - generic [ref=e16]:
+      - img [ref=e17]
+      - generic [ref=e19]:
+        - text: No Gemini API key configured. Chat requires a key — add it in
+        - button "Config Keys & Limits" [ref=e20] [cursor=pointer]
+        - text: or set
+        - code [ref=e21]: GEMINI_API_KEY
+        - text: in your environment.
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - button "Status" [ref=e63] [cursor=pointer]:
+          - img [ref=e64]
+          - text: Status
+        - button "Workspace" [active] [ref=e160] [cursor=pointer]:
+          - img [ref=e161]
+          - text: Workspace
+      - generic [ref=e179]:
+        - generic [ref=e180]:
+          - generic [ref=e181]: 2 files
+          - generic [ref=e182]:
+            - generic [ref=e183]: 14:53:24
+            - button "Refresh" [ref=e184] [cursor=pointer]:
+              - img [ref=e185]
+        - generic [ref=e190]:
+          - generic [ref=e197]:
+            - button "useLocalStorage.ts src/hooks/useLocalStorage.ts" [ref=e198] [cursor=pointer]:
+              - text: useLocalStorage.ts
+              - generic [ref=e199]: src/hooks/useLocalStorage.ts
+            - button "todo.ts src/types/todo.ts" [ref=e200] [cursor=pointer]:
+              - text: todo.ts
+              - generic [ref=e201]: src/types/todo.ts
+          - generic [ref=e205]:
+            - generic [ref=e207]:
+              - generic [ref=e208]: "1"
+              - generic [ref=e209]: "2"
+              - generic [ref=e210]: "3"
+              - generic [ref=e211]: "4"
+              - generic [ref=e212]: "5"
+              - generic [ref=e213]: "6"
+              - generic [ref=e214]: "7"
+              - generic [ref=e215]: "8"
+              - generic [ref=e216]: "9"
+              - generic [ref=e217]: "10"
+              - generic [ref=e218]: "11"
+              - generic [ref=e219]: "12"
+              - generic [ref=e220]: "13"
+              - generic [ref=e221]: "14"
+              - generic [ref=e222]: "15"
+              - generic [ref=e223]: "16"
+              - generic [ref=e224]: "17"
+              - generic [ref=e225]: "18"
+              - generic [ref=e226]: "19"
+              - generic [ref=e227]: "20"
+              - generic [ref=e228]: "21"
+              - generic [ref=e229]: "22"
+              - generic [ref=e230]: "23"
+              - generic [ref=e231]: "24"
+              - generic [ref=e232]: "25"
+              - generic [ref=e233]: "26"
+              - generic [ref=e234]: "27"
+              - generic [ref=e235]: "28"
+              - generic [ref=e236]: "29"
+              - generic [ref=e237]: "30"
+              - generic [ref=e238]: "31"
+              - generic [ref=e239]: "32"
+              - generic [ref=e240]: "33"
+              - generic [ref=e241]: "34"
+              - generic [ref=e242]: "35"
+              - generic [ref=e243]: "36"
+            - textbox [ref=e246]:
+              - generic [ref=e247]: "```typescript"
+              - generic [ref=e248]: "import { useState, useEffect, useCallback } from 'react';"
+              - generic [ref=e250]: "export interface Todo {"
+              - generic [ref=e251]: "id: string;"
+              - generic [ref=e252]: "text: string;"
+              - generic [ref=e253]: "completed: boolean;"
+              - generic [ref=e254]: "createdAt: number;"
+              - generic [ref=e255]: "}"
+              - generic [ref=e257]: export function useLocalStorage<T>(
+              - generic [ref=e258]: "key: string,"
+              - generic [ref=e259]: "initialValue: T"
+              - generic [ref=e260]: "): [T, (value: T | ((val: T) => T)) => void, () => void] {"
+              - generic [ref=e261]: "const [storedValue, setStoredValue] = useState<T>(() => {"
+              - generic [ref=e262]: "try {"
+              - generic [ref=e263]: "const item = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;"
+              - generic [ref=e264]: "return item ? JSON.parse(item) : initialValue;"
+              - generic [ref=e265]: "} catch (error) {"
+              - generic [ref=e266]: "console.warn(`Error reading localStorage key \"${key}\":`, error);"
+              - generic [ref=e267]: return initialValue;
+              - generic [ref=e268]: "}"
+              - generic [ref=e269]: "});"
+              - generic [ref=e271]: const setValue = useCallback(
+              - generic [ref=e272]: "(value: T | ((val: T) => T)) => {"
+              - generic [ref=e273]: "try {"
+              - generic [ref=e274]: "const valueToStore = value instanceof Function ? value(storedValue) : value;"
+              - generic [ref=e275]: setStoredValue(valueToStore);
+              - generic [ref=e276]: "if (typeof window !== 'undefined') {"
+              - generic [ref=e277]: window.localStorage.setItem(key, JSON.stringify(valueToStore));
+              - generic [ref=e278]: "}"
+              - generic [ref=e279]: "} catch (error) {"
+              - generic [ref=e280]: "console.warn(`Error setting localStorage key \"${key}\":`, error);"
+              - generic [ref=e281]: "}"
+              - generic [ref=e282]: "},"
+    - paragraph [ref=e45]: DLO v0.1.0 · Double-Loop Orchestrator for autonomous development · 🚀
+  - button "Open Next.js Dev Tools" [ref=e52] [cursor=pointer]:
+    - img [ref=e53]
+  - alert [ref=e46]

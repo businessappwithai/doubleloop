@@ -1,0 +1,69 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - heading "DLO Pipeline Controller" [level=1] [ref=e6]:
+          - img [ref=e7]
+          - text: DLO Pipeline Controller
+        - paragraph [ref=e9]: Autonomous development pipeline orchestrator
+      - generic [ref=e10]:
+        - button "Config Keys & Limits" [ref=e11] [cursor=pointer]:
+          - img [ref=e12]
+          - text: Config Keys & Limits
+        - generic [ref=e16]:
+          - generic [ref=e17]: Phase
+          - generic [ref=e18]: EXECUTION_RUNNING
+    - generic [ref=e23]:
+      - img [ref=e24]
+      - generic [ref=e26]:
+        - text: No Gemini API key configured. Chat requires a key — add it in
+        - button "Config Keys & Limits" [ref=e27] [cursor=pointer]
+        - text: or set
+        - code [ref=e28]: GEMINI_API_KEY
+        - text: in your environment.
+    - generic [ref=e31]:
+      - heading "Pipeline Status" [level=2] [ref=e32]
+      - generic [ref=e33]:
+        - generic [ref=e34]:
+          - paragraph [ref=e35]: Pipeline ID
+          - paragraph [ref=e36]: c418063e-dda9-4d07-a44a-c9099c46256c
+        - generic [ref=e37]:
+          - paragraph [ref=e38]: Phase
+          - paragraph [ref=e40]: EXECUTION_RUNNING
+        - generic [ref=e105]:
+          - paragraph [ref=e106]: History
+          - generic [ref=e110]: EXECUTION_RUNNING14:37:47
+        - generic [ref=e58]:
+          - paragraph [ref=e59]: Modules
+          - generic [ref=e60]:
+            - generic [ref=e61]:
+              - generic [ref=e62]:
+                - img [ref=e111]
+                - generic [ref=e66]: Core Todo State & Types
+                - generic [ref=e67]: ×2
+              - generic [ref=e68]: src/types/todo.ts · src/context/TodoContext.tsx
+            - generic [ref=e69]:
+              - generic [ref=e70]:
+                - img [ref=e114]
+                - generic [ref=e74]: UI Components & Filtering
+                - generic [ref=e75]: ×2
+              - generic [ref=e76]: src/App.tsx · src/components/TodoList.tsx
+            - generic [ref=e77]:
+              - generic [ref=e78]:
+                - img [ref=e117]
+                - generic [ref=e82]: localStorage Persistence
+                - generic [ref=e83]: ×1
+              - generic [ref=e84]: src/hooks/useLocalStorage.ts · src/App.tsx
+        - generic [ref=e119]:
+          - paragraph [ref=e120]: Context Notes
+          - generic [ref=e121]:
+            - paragraph [ref=e122]: Add context, constraints, or corrections the agent should consider.
+            - textbox "e.g. 'Use React Query v5 hooks syntax' or 'Add dark mode support'…" [ref=e123]
+            - button "Send Note" [disabled] [ref=e125]
+        - generic [ref=e85]:
+          - paragraph [ref=e86]: "Created: Jun 15, 14:26:30"
+          - paragraph [ref=e87]: "Updated: Jun 15, 14:37:57"
+    - paragraph [ref=e89]: DLO v0.1.0 · Double-Loop Orchestrator for autonomous development · 🚀
+  - button "Open Next.js Dev Tools" [ref=e96] [cursor=pointer]:
+    - img [ref=e97]
+  - alert [ref=e90]

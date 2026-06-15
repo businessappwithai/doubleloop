@@ -1,0 +1,82 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - heading "DLO Pipeline Controller" [level=1] [ref=e6]:
+          - img [ref=e7]
+          - text: DLO Pipeline Controller
+        - paragraph [ref=e9]: Autonomous development pipeline orchestrator
+      - generic [ref=e10]:
+        - button "Config Keys & Limits" [ref=e11] [cursor=pointer]:
+          - img [ref=e12]
+          - text: Config Keys & Limits
+        - generic [ref=e57]:
+          - generic [ref=e58]: Phase
+          - generic [ref=e59]: COMPLETED
+    - generic [ref=e16]:
+      - img [ref=e17]
+      - generic [ref=e19]:
+        - text: No Gemini API key configured. Chat requires a key — add it in
+        - button "Config Keys & Limits" [ref=e20] [cursor=pointer]
+        - text: or set
+        - code [ref=e21]: GEMINI_API_KEY
+        - text: in your environment.
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - button "Status" [active] [ref=e63] [cursor=pointer]:
+          - img [ref=e64]
+          - text: Status
+        - button "Workspace" [ref=e160] [cursor=pointer]:
+          - img [ref=e161]
+          - text: Workspace
+      - generic [ref=e586]:
+        - heading "Pipeline Status" [level=2] [ref=e587]
+        - generic [ref=e588]:
+          - generic [ref=e589]:
+            - paragraph [ref=e590]: Pipeline ID
+            - paragraph [ref=e591]: f56f9eee-09d5-42ee-91e1-84941e64f25e
+          - generic [ref=e592]:
+            - paragraph [ref=e593]: Phase
+            - paragraph [ref=e595]: COMPLETED
+          - generic [ref=e596]:
+            - paragraph [ref=e597]: History
+            - generic [ref=e598]:
+              - generic [ref=e602]: GATE1_PENDING14:51:43
+              - generic [ref=e606]: PLANNING_RUNNING14:52:04
+              - generic [ref=e610]: GATE2_PENDING14:52:25
+              - generic [ref=e614]: EXECUTION_RUNNING14:52:46
+              - generic [ref=e617]: COMPLETED14:53:51
+          - generic [ref=e618]:
+            - paragraph [ref=e619]: Modules
+            - generic [ref=e620]:
+              - generic [ref=e621]:
+                - generic [ref=e622]:
+                  - img [ref=e623]
+                  - generic [ref=e626]: Custom localStorage hook and types
+                  - generic [ref=e627]: ×2
+                - generic [ref=e628]: src/hooks/useLocalStorage.ts · src/types/todo.ts
+              - generic [ref=e629]:
+                - generic [ref=e630]:
+                  - img [ref=e631]
+                  - generic [ref=e634]: TodoList component with filter tabs
+                  - generic [ref=e635]: ×2
+                - generic [ref=e636]: src/components/TodoList.tsx
+              - generic [ref=e637]:
+                - generic [ref=e638]:
+                  - img [ref=e639]
+                  - generic [ref=e642]: Add, delete, and toggle complete functionality
+                  - generic [ref=e643]: ×2
+                - generic [ref=e644]: src/App.tsx
+          - generic [ref=e645]:
+            - paragraph [ref=e646]: Context Notes
+            - generic [ref=e647]:
+              - paragraph [ref=e648]: Steer the pipeline at any stage — add constraints, corrections, or new requirements.
+              - textbox "e.g. 'Skip the filter tabs', 'Use Zustand instead of Context', 'Add dark mode'…" [ref=e649]: Use Zustand instead of Context API for state management
+              - button "Send Note" [ref=e651] [cursor=pointer]
+          - generic [ref=e652]:
+            - paragraph [ref=e653]: "Created: Jun 15, 14:51:43"
+            - paragraph [ref=e654]: "Updated: Jun 15, 14:53:51"
+    - paragraph [ref=e45]: DLO v0.1.0 · Double-Loop Orchestrator for autonomous development · 🚀
+  - button "Open Next.js Dev Tools" [ref=e52] [cursor=pointer]:
+    - img [ref=e53]
+  - alert [ref=e46]
