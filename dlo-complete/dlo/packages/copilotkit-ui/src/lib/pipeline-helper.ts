@@ -376,6 +376,106 @@ Respond ONLY with valid JSON: {"passed":boolean,"override":boolean,"reasoning":"
 
 // ─── Database detection helpers ───────────────────────────────────────────────
 
+async function scaffoldMissingInfrastructure(workspaceDir: string, projectName: string): Promise<void> {
+  const pkgPath = join(workspaceDir, "package.json");
+  let hasPkg = false;
+  try { await readFile(pkgPath, "utf-8"); hasPkg = true; } catch { /* missing */ }
+
+  if (!hasPkg) {
+    // Detect what kind of project was generated
+    const allFiles: string[] = [];
+    const collectFiles = async (dir: string) => {
+      const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+      for (const e of entries) {
+        if (e.name.startsWith(".") || e.name === "node_modules") continue;
+        const full = join(dir, e.name);
+        if (e.isDirectory()) await collectFiles(full);
+        else allFiles.push(full.replace(workspaceDir + "/", ""));
+      }
+    };
+    await collectFiles(workspaceDir);
+
+    const hasTs = allFiles.some(f => f.endsWith(".tsx") || f.endsWith(".ts"));
+    const hasCss = allFiles.some(f => f.endsWith(".css"));
+    const hasReact = allFiles.some(f => f.includes("App") || f.includes("component"));
+    const slug = projectName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+    if (hasReact || hasTs) {
+      // Scaffold a Vite + React + TypeScript project
+      const pkg = {
+        name: slug,
+        version: "0.1.0",
+        private: true,
+        type: "module",
+        scripts: {
+          dev: "vite",
+          build: "tsc -b && vite build",
+          preview: "vite preview",
+          test: "vitest run --passWithNoTests",
+        },
+        dependencies: {
+          react: "^18.3.1",
+          "react-dom": "^18.3.1",
+        },
+        devDependencies: {
+          "@types/react": "^18.3.5",
+          "@types/react-dom": "^18.3.0",
+          "@vitejs/plugin-react": "^4.3.1",
+          typescript: "^5.5.3",
+          vite: "^5.4.2",
+          vitest: "^2.0.5",
+        },
+      };
+      await writeFile(pkgPath, JSON.stringify(pkg, null, 2), "utf-8");
+      console.log(`[Scaffold] Generated package.json for ${projectName}`);
+
+      // index.html if missing
+      const indexPath = join(workspaceDir, "index.html");
+      try { await readFile(indexPath, "utf-8"); } catch {
+        await writeFile(indexPath, `<!DOCTYPE html>
+<html lang="en">
+  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>${projectName}</title></head>
+  <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
+</html>`, "utf-8");
+        console.log(`[Scaffold] Generated index.html`);
+      }
+
+      // vite.config.ts if missing
+      const vitePath = join(workspaceDir, "vite.config.ts");
+      try { await readFile(vitePath, "utf-8"); } catch {
+        await writeFile(vitePath, `import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+export default defineConfig({ plugins: [react()] })
+`, "utf-8");
+        console.log(`[Scaffold] Generated vite.config.ts`);
+      }
+
+      // tsconfig.json if missing
+      const tscPath = join(workspaceDir, "tsconfig.json");
+      try { await readFile(tscPath, "utf-8"); } catch {
+        await writeFile(tscPath, JSON.stringify({
+          compilerOptions: { target: "ES2020", useDefineForClassFields: true, lib: ["ES2020", "DOM", "DOM.Iterable"], module: "ESNext", skipLibCheck: true, moduleResolution: "bundler", allowImportingTsExtensions: true, noEmit: true, strict: true, jsx: "react-jsx" },
+          include: ["src"],
+        }, null, 2), "utf-8");
+        console.log(`[Scaffold] Generated tsconfig.json`);
+      }
+
+      // src/main.tsx if missing
+      const mainPath = join(workspaceDir, "src/main.tsx");
+      try { await readFile(mainPath, "utf-8"); } catch {
+        await mkdir(join(workspaceDir, "src"), { recursive: true });
+        await writeFile(mainPath, `import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+${hasCss ? "import './index.css'" : ""}
+import App from './App'
+createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>)
+`, "utf-8");
+        console.log(`[Scaffold] Generated src/main.tsx`);
+      }
+    }
+  }
+}
+
 async function detectDatabaseNeeded(workspaceDir: string, domainDocument?: string): Promise<boolean> {
   const dbKeywords = /\b(?:postgres|postgresql|mysql|sqlite|mongodb|redis|database|sql|pg|prisma|typeorm|sequelize|drizzle|mongoose)\b/i;
   const dbImports = /from ['"](?:pg|mysql|mysql2|sqlite3|mongoose|prisma|@prisma\/client|typeorm|sequelize|drizzle-orm|knex|better-sqlite3)/;
@@ -936,8 +1036,12 @@ Apply the fixes and ensure the code is correct.`;
     console.log(`[Supervisor] Module ${moduleId} accepted`);
   }
 
-  // All modules done — transition to database provisioning
+  // All modules done — scaffold missing infrastructure if needed
   const finalState = await getPipeline(pipelineId);
+  if (finalState) {
+    await scaffoldMissingInfrastructure(finalState.workspaceDir, finalState.projectName);
+  }
+
   if (finalState && finalState.phase === "EXECUTION_RUNNING") {
     finalState.phase = "DB_PROVISIONING_RUNNING";
     pushPhaseHistory(finalState, "DB_PROVISIONING_RUNNING");
@@ -1287,7 +1391,9 @@ Rules:
 - ceoPlan: 1-2 sentence business summary (string)
 - architecturePlan: 1-2 sentence technical summary (string)
 - engineeringPlan: exactly 3 modules maximum, each with short prompts under 100 chars
+- CRITICAL: The FIRST module MUST include infrastructure files in its touches: package.json, index.html (if frontend), vite.config.ts or similar build config. Without these the app cannot be installed, tested, or launched.
+- Every touches array must be complete — list every file the module creates or modifies.
 
 Required structure (copy exactly):
-{"ceoPlan":"string","architecturePlan":"string","engineeringPlan":{"planVersion":1,"generatedBy":"DLO Planner","modules":[{"moduleId":"m1","title":"string","stackTarget":"frontend","prompt":"string at least 40 chars describing what to build","dependsOn":[],"estimatedComplexity":"easy","maxAttempts":3,"exitClauses":[{"clauseId":"c1","description":"build passes","kind":"command","argv":["npm","run","build"],"expect":{"exitCode":0}}],"touches":["src/App.tsx"]}]}}`;
+{"ceoPlan":"string","architecturePlan":"string","engineeringPlan":{"planVersion":1,"generatedBy":"DLO Planner","modules":[{"moduleId":"m1","title":"string","stackTarget":"frontend","prompt":"string at least 40 chars describing what to build","dependsOn":[],"estimatedComplexity":"easy","maxAttempts":3,"exitClauses":[{"clauseId":"c1","description":"build passes","kind":"command","argv":["npm","run","build"],"expect":{"exitCode":0}}],"touches":["package.json","index.html","vite.config.ts","src/main.tsx","src/App.tsx"]}]}}`;
 }
