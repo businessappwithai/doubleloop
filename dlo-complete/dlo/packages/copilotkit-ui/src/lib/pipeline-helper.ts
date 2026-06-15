@@ -714,7 +714,34 @@ export async function runPlanningBackground(pipelineId: string): Promise<void> {
         jsonText = jsonText.substring(firstBrace, lastBrace + 1);
       }
     }
-    const planData = JSON.parse(jsonText);
+
+    // Repair truncated JSON: close any unclosed brackets/braces
+    let planData: any;
+    try {
+      planData = JSON.parse(jsonText);
+    } catch {
+      // Count unmatched open brackets/braces and close them
+      let open = 0;
+      let inStr = false;
+      let escape = false;
+      for (const ch of jsonText) {
+        if (escape) { escape = false; continue; }
+        if (ch === "\\") { escape = true; continue; }
+        if (ch === '"') { inStr = !inStr; continue; }
+        if (inStr) continue;
+        if (ch === "{" || ch === "[") open++;
+        if (ch === "}" || ch === "]") open--;
+      }
+      // Strip trailing commas before closing, then close
+      let repaired = jsonText.replace(/,\s*$/, "");
+      if (open > 0) repaired += "}]".slice(0, open).split("").reverse().join("") + "}".repeat(Math.max(0, open - 1));
+      try {
+        planData = JSON.parse(repaired);
+        console.warn(`[Planning] JSON was truncated — repaired and parsed successfully`);
+      } catch (e2: any) {
+        throw new Error(`Planning response contained invalid JSON: ${e2.message}`);
+      }
+    }
 
     state.phase = "GATE2_PENDING";
     state.lastTransitionAt = new Date().toISOString();
