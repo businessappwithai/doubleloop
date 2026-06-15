@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 
 type Todo = {
   id: string;
@@ -67,84 +67,87 @@ export default function App() {
   const filteredTodos = getFilteredTodos();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
-      <div className="max-w-md mx-auto bg-white rounded-lg shadow-lg p-6">
-        <h1 className="text-3xl font-bold text-gray-800 mb-6">My Todos</h1>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-8 px-4">
+      <div className="max-w-2xl mx-auto">
+        <h1 className="text-4xl font-bold text-center text-gray-800 mb-2">TodoApp</h1>
+        <p className="text-center text-gray-600 mb-8">Manage your daily tasks</p>
 
-        <div className="flex gap-2 mb-6">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && addTodo()}
-            placeholder="Add a new todo..."
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-          <button
-            onClick={addTodo}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
-          >
-            Add
-          </button>
-        </div>
-
-        <div className="flex gap-2 mb-6 border-b border-gray-200">
-          {(['All', 'Active', 'Completed'] as const).map((filterType) => (
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+          <div className="flex gap-2 mb-6">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && addTodo()}
+              placeholder="Add a new task..."
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
             <button
-              key={filterType}
-              onClick={() => setFilter(filterType)}
-              className={`px-4 py-2 font-medium transition-colors ${
-                filter === filterType
-                  ? 'text-indigo-600 border-b-2 border-indigo-600'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
+              onClick={addTodo}
+              className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-semibold transition"
             >
-              {filterType}
+              Add
             </button>
-          ))}
-        </div>
+          </div>
 
-        <div className="mb-4 text-sm text-gray-600 font-medium">
-          {remainingCount} {remainingCount === 1 ? 'item' : 'items'} left
-        </div>
-
-        <div className="space-y-2">
-          {filteredTodos.length === 0 ? (
-            <p className="text-center text-gray-400 py-8">
-              {todos.length === 0
-                ? 'No todos yet. Add one to get started!'
-                : `No ${filter.toLowerCase()} todos`}
-            </p>
-          ) : (
-            filteredTodos.map((todo) => (
-              <div
-                key={todo.id}
-                className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+          <div className="flex gap-2 mb-6">
+            {(['All', 'Active', 'Completed'] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`px-4 py-2 rounded-lg font-semibold transition ${
+                  filter === f
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
               >
-                <input
-                  type="checkbox"
-                  checked={todo.completed}
-                  onChange={() => toggleComplete(todo.id)}
-                  className="w-5 h-5 text-indigo-600 rounded cursor-pointer"
-                />
-                <span
-                  className={`flex-1 ${
-                    todo.completed
-                      ? 'line-through text-gray-400'
-                      : 'text-gray-800'
-                  }`}
+                {f}
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-2">
+            {filteredTodos.length === 0 ? (
+              <p className="text-center text-gray-500">
+                {todos.length === 0
+                  ? 'No todos yet. Add one to get started!'
+                  : `No ${filter.toLowerCase()} todos`}
+              </p>
+            ) : (
+              filteredTodos.map((todo) => (
+                <div
+                  key={todo.id}
+                  className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
                 >
-                  {todo.text}
-                </span>
-                <button
-                  onClick={() => deleteTodo(todo.id)}
-                  className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded transition-colors"
-                >
-                  Delete
-                </button>
-              </div>
-            ))
-          )}
+                  <input
+                    type="checkbox"
+                    checked={todo.completed}
+                    onChange={() => toggleComplete(todo.id)}
+                    className="w-5 h-5 text-indigo-600 rounded cursor-pointer"
+                  />
+                  <span
+                    className={`flex-1 ${
+                      todo.completed ? 'line-through text-gray-400' : 'text-gray-800'
+                    }`}
+                  >
+                    {todo.text}
+                  </span>
+                  <button
+                    onClick={() => deleteTodo(todo.id)}
+                    className="text-red-500 hover:text-red-700 font-semibold"
+                  >
+                    Delete
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow p-4 text-center">
+          <p className="text-sm text-gray-600">
+            {remainingCount} {remainingCount === 1 ? 'task' : 'tasks'} remaining
+          </p>
         </div>
       </div>
     </div>
