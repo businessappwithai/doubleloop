@@ -1,15 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import dynamic from "next/dynamic";
-import { javascript } from "@codemirror/lang-javascript";
-import { css } from "@codemirror/lang-css";
-import { html } from "@codemirror/lang-html";
-import { oneDark } from "@codemirror/theme-one-dark";
-import type { ViewUpdate } from "@codemirror/view";
+import Editor from "@monaco-editor/react";
 import { RefreshCw, FileCode, MessageSquarePlus, Send, X } from "lucide-react";
-
-const CodeMirror = dynamic(() => import("@uiw/react-codemirror"), { ssr: false });
 
 interface WorkspaceFile {
   path: string;
@@ -23,12 +16,17 @@ interface LineSelection {
   text: string;
 }
 
-function langFor(path: string) {
-  if (path.endsWith(".tsx") || path.endsWith(".ts") || path.endsWith(".jsx") || path.endsWith(".js"))
-    return javascript({ jsx: true, typescript: true });
-  if (path.endsWith(".css")) return css();
-  if (path.endsWith(".html")) return html();
-  return javascript({ jsx: true, typescript: true });
+function langFor(path: string): string {
+  if (path.endsWith(".tsx") || path.endsWith(".ts")) return "typescript";
+  if (path.endsWith(".jsx") || path.endsWith(".js")) return "javascript";
+  if (path.endsWith(".css")) return "css";
+  if (path.endsWith(".html")) return "html";
+  if (path.endsWith(".json")) return "json";
+  if (path.endsWith(".md")) return "markdown";
+  if (path.endsWith(".py")) return "python";
+  if (path.endsWith(".sql")) return "sql";
+  if (path.endsWith(".sh")) return "shell";
+  return "typescript";
 }
 
 interface Props {
@@ -47,6 +45,8 @@ export function WorkspaceViewer({ pipelineId, isRunning, onSteer }: Props) {
   const [steerSubmitting, setSteerSubmitting] = useState(false);
   const [steerSent, setSteerSent] = useState(false);
   const steerInputRef = useRef<HTMLTextAreaElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const editorRef = useRef<any>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -75,21 +75,40 @@ export function WorkspaceViewer({ pipelineId, isRunning, onSteer }: Props) {
     return () => clearInterval(id);
   }, [isRunning, refresh]);
 
-  // Detect line selection in CodeMirror
-  const handleEditorUpdate = useCallback((update: ViewUpdate) => {
-    if (!update.selectionSet) return;
-    const sel = update.state.selection.main;
-    if (sel.empty) {
-      setLineSelection(null);
-      return;
-    }
-    const doc = update.state.doc;
-    const fromLine = doc.lineAt(sel.from).number;
-    const toLine = doc.lineAt(sel.to).number;
-    const text = update.state.sliceDoc(sel.from, Math.min(sel.to, sel.from + 300));
-    setLineSelection({ fromLine, toLine, text });
-    // Focus steering input if it's visible
-    setTimeout(() => steerInputRef.current?.focus(), 50);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleEditorMount = useCallback((monacoEditor: any) => {
+    editorRef.current = monacoEditor;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    monacoEditor.onDidChangeCursorSelection((e: any) => {
+      const sel = e.selection;
+      const isEmpty =
+        sel.startLineNumber === sel.endLineNumber &&
+        sel.startColumn === sel.endColumn;
+
+      if (isEmpty) {
+        setLineSelection(null);
+        return;
+      }
+
+      const model = monacoEditor.getModel();
+      if (!model) return;
+
+      const text = model.getValueInRange({
+        startLineNumber: sel.startLineNumber,
+        startColumn: sel.startColumn,
+        endLineNumber: sel.endLineNumber,
+        endColumn: sel.endColumn,
+      });
+
+      setLineSelection({
+        fromLine: sel.startLineNumber,
+        toLine: sel.endLineNumber,
+        text: text.slice(0, 300),
+      });
+
+      setTimeout(() => steerInputRef.current?.focus(), 50);
+    });
   }, []);
 
   const handleSteerSubmit = useCallback(async () => {
@@ -114,6 +133,11 @@ export function WorkspaceViewer({ pipelineId, isRunning, onSteer }: Props) {
     setSteerSent(false);
   }, []);
 
+  const handleFileSelect = useCallback((path: string) => {
+    setSelected(path);
+    setLineSelection(null);
+  }, []);
+
   const currentFile = files.find((f) => f.path === selected);
 
   return (
@@ -121,7 +145,9 @@ export function WorkspaceViewer({ pipelineId, isRunning, onSteer }: Props) {
       {/* Toolbar */}
       <div className="flex items-center justify-between px-2 py-1.5 bg-slate-900 border-b border-slate-700 flex-shrink-0">
         <span className="text-xs text-slate-400 font-mono truncate">
-          {files.length === 0 ? "Waiting for generated files…" : `${files.length} file${files.length !== 1 ? "s" : ""}`}
+          {files.length === 0
+            ? "Waiting for generated files…"
+            : `${files.length} file${files.length !== 1 ? "s" : ""}`}
         </span>
         <div className="flex items-center gap-2">
           {lastRefresh && (
@@ -164,7 +190,7 @@ export function WorkspaceViewer({ pipelineId, isRunning, onSteer }: Props) {
             {files.map((f) => (
               <button
                 key={f.path}
-                onClick={() => { setSelected(f.path); setLineSelection(null); }}
+                onClick={() => handleFileSelect(f.path)}
                 className={`w-full text-left px-2 py-1.5 text-xs font-mono transition ${
                   selected === f.path
                     ? "bg-blue-900/60 text-blue-200"
@@ -186,15 +212,22 @@ export function WorkspaceViewer({ pipelineId, isRunning, onSteer }: Props) {
                 <div className="flex items-start justify-between gap-2 mb-1.5">
                   <span className="text-xs font-semibold text-blue-300">
                     Steer lines {lineSelection.fromLine}
-                    {lineSelection.toLine !== lineSelection.fromLine ? `–${lineSelection.toLine}` : ""} in {selected?.split("/").pop()}
+                    {lineSelection.toLine !== lineSelection.fromLine
+                      ? `–${lineSelection.toLine}`
+                      : ""}{" "}
+                    in {selected?.split("/").pop()}
                   </span>
-                  <button onClick={dismissSteer} className="text-slate-500 hover:text-slate-300 mt-0.5">
+                  <button
+                    onClick={dismissSteer}
+                    className="text-slate-500 hover:text-slate-300 mt-0.5"
+                  >
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
                 {lineSelection.text && (
                   <pre className="text-[10px] text-slate-500 font-mono bg-slate-900/60 rounded px-2 py-1 mb-2 max-h-12 overflow-hidden truncate">
-                    {lineSelection.text.slice(0, 120)}{lineSelection.text.length > 120 ? "…" : ""}
+                    {lineSelection.text.slice(0, 120)}
+                    {lineSelection.text.length > 120 ? "…" : ""}
                   </pre>
                 )}
                 {steerSent ? (
@@ -205,7 +238,10 @@ export function WorkspaceViewer({ pipelineId, isRunning, onSteer }: Props) {
                       ref={steerInputRef}
                       value={steerInstruction}
                       onChange={(e) => setSteerInstruction(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSteerSubmit(); }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
+                          handleSteerSubmit();
+                      }}
                       placeholder={`e.g. "Use zod for validation here", "add error handling", "extract this into a helper function"…`}
                       rows={2}
                       className="flex-1 text-xs bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-slate-200 placeholder-slate-600 resize-none focus:outline-none focus:border-blue-500"
@@ -223,22 +259,35 @@ export function WorkspaceViewer({ pipelineId, isRunning, onSteer }: Props) {
               </div>
             )}
 
-            {/* Editor */}
-            <div className="flex-1 overflow-auto">
+            {/* Monaco Editor */}
+            <div className="flex-1 overflow-hidden">
               {currentFile ? (
-                <CodeMirror
+                <Editor
+                  key={currentFile.path}
                   value={currentFile.content}
-                  extensions={[langFor(currentFile.path)]}
-                  onUpdate={handleEditorUpdate}
-                  theme={oneDark}
-                  editable={false}
-                  basicSetup={{
-                    lineNumbers: true,
-                    foldGutter: true,
-                    highlightActiveLine: true,
-                    highlightSelectionMatches: false,
+                  language={langFor(currentFile.path)}
+                  theme="vs-dark"
+                  onMount={handleEditorMount}
+                  options={{
+                    readOnly: true,
+                    fontSize: 12,
+                    lineNumbers: "on",
+                    minimap: { enabled: false },
+                    scrollBeyondLastLine: false,
+                    wordWrap: "off",
+                    folding: true,
+                    renderLineHighlight: "line",
+                    selectionHighlight: true,
+                    occurrencesHighlight: "off",
+                    hideCursorInOverviewRuler: true,
+                    overviewRulerLanes: 0,
+                    scrollbar: {
+                      verticalScrollbarSize: 8,
+                      horizontalScrollbarSize: 8,
+                    },
+                    padding: { top: 8, bottom: 8 },
                   }}
-                  style={{ fontSize: "12px", height: "100%" }}
+                  height="100%"
                 />
               ) : (
                 <div className="flex items-center justify-center h-full text-slate-600 text-xs">

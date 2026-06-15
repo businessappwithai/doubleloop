@@ -1438,7 +1438,6 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                   />
                 </div>
               </div>
-            </div>
 
             {/* Test Results */}
             {isTesting && (
