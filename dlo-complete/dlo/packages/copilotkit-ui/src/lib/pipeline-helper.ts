@@ -217,11 +217,19 @@ export async function runPlanningBackground(pipelineId: string): Promise<void> {
       rawText = await spawnClaude(getPlanningPrompt(state), plannerModel, state.workspaceDir);
     }
 
-    let jsonText = rawText.trim();
-    const firstBrace = jsonText.indexOf("{");
-    const lastBrace = jsonText.lastIndexOf("}");
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-      jsonText = jsonText.substring(firstBrace, lastBrace + 1);
+    // Strip ANSI escape codes emitted by the claude CLI
+    let jsonText = rawText.replace(/\x1b\[[0-9;]*m/g, "").trim();
+    // If wrapped in a markdown code block, extract the contents
+    const codeBlock = jsonText.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlock) {
+      jsonText = codeBlock[1].trim();
+    } else {
+      // Fall back to first-brace / last-brace extraction
+      const firstBrace = jsonText.indexOf("{");
+      const lastBrace = jsonText.lastIndexOf("}");
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        jsonText = jsonText.substring(firstBrace, lastBrace + 1);
+      }
     }
     const planData = JSON.parse(jsonText);
 
