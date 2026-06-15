@@ -1,0 +1,132 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - heading "DLO Pipeline Controller" [level=1] [ref=e6]:
+          - img [ref=e7]
+          - text: DLO Pipeline Controller
+        - paragraph [ref=e9]: Autonomous development pipeline orchestrator
+      - button "Config Keys & Limits" [active] [ref=e11] [cursor=pointer]:
+        - img [ref=e12]
+        - text: Config Keys & Limits
+    - generic [ref=e16]:
+      - img [ref=e17]
+      - generic [ref=e19]:
+        - text: No Gemini API key configured. Chat requires a key — add it in
+        - button "Config Keys & Limits" [ref=e20] [cursor=pointer]
+        - text: or set
+        - code [ref=e21]: GEMINI_API_KEY
+        - text: in your environment.
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - img [ref=e39]
+        - generic [ref=e41]:
+          - heading "Paste Your Research" [level=2] [ref=e42]
+          - paragraph [ref=e43]: Research agent unavailable — provide your own research to proceed directly to planning.
+      - generic [ref=e44]:
+        - generic [ref=e45]:
+          - generic [ref=e46]: Project Name
+          - textbox "e.g. TodoApp" [ref=e47]
+        - generic [ref=e48]:
+          - generic [ref=e49]: Objectives
+          - textbox "What should this project accomplish?" [ref=e50]
+        - generic [ref=e51]:
+          - generic [ref=e52]: Research & Requirements
+          - textbox "Paste your full research here — technical requirements, architecture notes, API specs, data models, user flows, constraints, or any context the planner should know. Markdown supported." [ref=e53]:
+            - /placeholder: "Paste your full research here — technical requirements, architecture notes, API specs, data models, user flows, constraints, or any context the planner should know.\n\nMarkdown supported."
+        - button "Start Pipeline with This Research" [disabled] [ref=e54]:
+          - img [ref=e55]
+          - text: Start Pipeline with This Research
+    - generic [ref=e68]:
+      - generic [ref=e69]:
+        - heading "Configure Keys & Limits" [level=2] [ref=e70]:
+          - img [ref=e71]
+          - text: Configure Keys & Limits
+        - button [ref=e74] [cursor=pointer]:
+          - img [ref=e75]
+      - generic [ref=e78]:
+        - paragraph [ref=e79]: Provide credentials/keys to override default environment variables (e.g. GEMINI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY).
+        - generic [ref=e80]:
+          - generic [ref=e81]: Google Gemini API Key (Deep Research)
+          - textbox "Defaults to process.env.GEMINI_API_KEY" [ref=e82]
+        - generic [ref=e83]:
+          - generic [ref=e84]: Gemini Research Model (Deep Research)
+          - combobox [ref=e85]:
+            - option "deep-research-preview-04-2026" [selected]
+            - option "deep-research-max-preview-04-2026"
+            - option "Custom Model Name..."
+        - generic [ref=e86]:
+          - generic [ref=e87]: Copilot Chat Model
+          - combobox [ref=e88]:
+            - option "gemini-1.5-pro" [selected]
+            - option "gemini-2.5-pro"
+            - option "gemini-2.5-flash"
+            - option "gemini-2.0-flash"
+            - option "gemini-flash-latest"
+            - option "Custom Model Name..."
+        - generic [ref=e89]:
+          - generic [ref=e90]: Anthropic API Key (Claude Code)
+          - textbox "Defaults to process.env.ANTHROPIC_API_KEY" [ref=e91]
+        - generic [ref=e92]:
+          - generic [ref=e93]: Planner Model (Claude Code)
+          - combobox [ref=e94]:
+            - option "claude-haiku-4-5-20251001" [selected]
+            - option "claude-3-5-sonnet-latest"
+            - option "claude-3-5-sonnet-20241022"
+            - option "claude-3-5-haiku-latest"
+            - option "claude-3-opus-latest"
+            - option "gemini-2.5-flash"
+            - option "gemini-2.0-flash-001"
+            - option "gemini-2.0-flash-lite-001"
+            - option "Custom Model Name..."
+        - generic [ref=e95]:
+          - generic [ref=e96]: Supervisor Model (Claude Code)
+          - combobox [ref=e97]:
+            - option "claude-haiku-4-5-20251001"
+            - option "claude-3-5-sonnet-latest"
+            - option "claude-3-5-sonnet-20241022"
+            - option "claude-3-5-haiku-latest"
+            - option "claude-3-opus-latest"
+            - option "gemini-2.5-flash"
+            - option "gemini-2.0-flash-001"
+            - option "gemini-2.0-flash-lite-001"
+            - option "Custom Model Name..." [selected]
+        - generic [ref=e98]:
+          - generic [ref=e99]: DeepSeek / CodeWhale API Key
+          - textbox "Defaults to process.env.DEEPSEEK_API_KEY" [ref=e100]
+        - generic [ref=e101]:
+          - generic [ref=e102]: Executor Model (DeepSeek / CodeWhale)
+          - combobox [ref=e103]:
+            - option "deepseek-coder" [selected]
+            - option "deepseek-chat"
+            - option "deepseek-reasoner"
+            - option "Custom Model Name..."
+        - generic [ref=e104]:
+          - generic [ref=e105]: pi.dev API Key (Harness)
+          - textbox "Defaults to process.env.PI_API_KEY" [ref=e106]
+        - generic [ref=e107]:
+          - generic [ref=e108]: Harness Model (pi.dev / Pi)
+          - combobox [ref=e109]:
+            - option "pi-default-model" [selected]
+            - option "pi-large-model"
+            - option "Custom Model Name..."
+        - generic [ref=e110]:
+          - generic [ref=e111]: Pi Harness Subagents Extension
+          - combobox [ref=e112]:
+            - option "@gotgenes/pi-subagents" [selected]
+            - option "@tintinweb/pi-subagents"
+        - generic [ref=e113]:
+          - generic [ref=e114]:
+            - generic [ref=e115]: Max Concurrent Modules
+            - spinbutton [ref=e116]: "8"
+          - generic [ref=e117]:
+            - generic [ref=e118]: USD Budget Limit
+            - spinbutton [ref=e119]: "100"
+      - generic [ref=e120]:
+        - button "Test Connection" [ref=e121] [cursor=pointer]
+        - button "Cancel" [ref=e122] [cursor=pointer]
+        - button "Save Changes" [ref=e123] [cursor=pointer]
+    - paragraph [ref=e38]: DLO v0.1.0 · Double-Loop Orchestrator for autonomous development · 🚀
+  - button "Open Next.js Dev Tools" [ref=e62] [cursor=pointer]:
+    - img [ref=e63]
+  - alert [ref=e66]

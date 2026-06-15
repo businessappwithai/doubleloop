@@ -1,0 +1,125 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - heading "DLO Pipeline Controller" [level=1] [ref=e6]:
+          - img [ref=e7]
+          - text: DLO Pipeline Controller
+        - paragraph [ref=e9]: Autonomous development pipeline orchestrator
+      - generic [ref=e10]:
+        - button "Config Keys & Limits" [ref=e11] [cursor=pointer]:
+          - img [ref=e12]
+          - text: Config Keys & Limits
+        - generic [ref=e57]:
+          - generic [ref=e58]: Phase
+          - generic [ref=e59]: EXECUTION_RUNNING
+    - generic [ref=e16]:
+      - img [ref=e17]
+      - generic [ref=e19]:
+        - text: No Gemini API key configured. Chat requires a key — add it in
+        - button "Config Keys & Limits" [ref=e20] [cursor=pointer]
+        - text: or set
+        - code [ref=e21]: GEMINI_API_KEY
+        - text: in your environment.
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - button "Status" [ref=e63] [cursor=pointer]:
+          - img [ref=e64]
+          - text: Status
+        - button "Workspace" [ref=e164] [cursor=pointer]:
+          - img [ref=e165]
+          - text: Workspace
+      - generic [ref=e449]:
+        - generic [ref=e450]:
+          - generic [ref=e451]: 3 files
+          - generic [ref=e452]:
+            - generic [ref=e453]: 23:58:34
+            - button "Refresh" [ref=e454] [cursor=pointer]:
+              - img [ref=e455]
+        - generic [ref=e460]:
+          - img [ref=e461]
+          - generic [ref=e463]: Select lines in the editor to steer the code at that location
+        - generic [ref=e464]:
+          - generic [ref=e465]:
+            - button "DOMAIN.md DOMAIN.md" [ref=e466] [cursor=pointer]:
+              - generic [ref=e467]: DOMAIN.md
+              - generic [ref=e468]: DOMAIN.md
+            - button "PLAN.md PLAN.md" [ref=e469] [cursor=pointer]:
+              - generic [ref=e470]: PLAN.md
+              - generic [ref=e471]: PLAN.md
+            - button "build.gradle.kts build.gradle.kts" [active] [ref=e472] [cursor=pointer]:
+              - generic [ref=e473]: build.gradle.kts
+              - generic [ref=e474]: build.gradle.kts
+          - code [ref=e479]:
+            - generic [ref=e480]:
+              - textbox "Editor content"
+              - textbox [ref=e481]
+              - generic [ref=e483]:
+                - generic [ref=e484]:
+                  - generic [ref=e486] [cursor=pointer]: 
+                  - generic [ref=e487]: "1"
+                - generic [ref=e489]: "2"
+                - generic [ref=e491]: "3"
+                - generic [ref=e493]: "4"
+                - generic [ref=e495]: "5"
+                - generic [ref=e497]: "6"
+                - generic [ref=e499]: "7"
+                - generic [ref=e501]: "8"
+                - generic [ref=e503]: "9"
+                - generic [ref=e504]:
+                  - generic [ref=e505] [cursor=pointer]: 
+                  - generic [ref=e506]: "10"
+                - generic [ref=e508]: "11"
+                - generic [ref=e510]: "12"
+                - generic [ref=e512]: "13"
+                - generic [ref=e513]:
+                  - generic [ref=e514] [cursor=pointer]: 
+                  - generic [ref=e515]: "14"
+                - generic [ref=e517]: "15"
+                - generic [ref=e519]: "16"
+                - generic [ref=e521]: "17"
+                - generic [ref=e523]: "18"
+                - generic [ref=e525]: "19"
+                - generic [ref=e527]: "20"
+                - generic [ref=e529]: "21"
+                - generic [ref=e530]:
+                  - generic [ref=e531] [cursor=pointer]: 
+                  - generic [ref=e532]: "22"
+                - generic [ref=e534]: "23"
+                - generic [ref=e536]: "24"
+                - generic [ref=e538]: "25"
+                - generic [ref=e540]: "26"
+                - generic [ref=e541]:
+                  - generic [ref=e542] [cursor=pointer]: 
+                  - generic [ref=e543]: "27"
+              - generic [ref=e607]:
+                - generic [ref=e609]: "plugins {"
+                - generic [ref=e611]: id("com.android.application")
+                - generic [ref=e613]: kotlin("android")
+                - generic [ref=e615]: kotlin("kapt")
+                - generic [ref=e617]: id("com.google.dagger.hilt.android")
+                - generic [ref=e619]: id("com.google.gms.google-services")
+                - generic [ref=e621]: id("kotlin-parcelize")
+                - generic [ref=e623]: "}"
+                - generic [ref=e626]: "android {"
+                - generic [ref=e628]: namespace = "com.example.todoapplication"
+                - generic [ref=e630]: compileSdk = 34
+                - generic [ref=e633]: "defaultConfig {"
+                - generic [ref=e635]: applicationId = "com.example.todoapplication"
+                - generic [ref=e637]: minSdk = 24
+                - generic [ref=e639]: targetSdk = 34
+                - generic [ref=e641]: versionCode = 1
+                - generic [ref=e643]: versionName = "1.0.0"
+                - generic [ref=e646]: testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+                - generic [ref=e648]: "vectorDrawables {"
+                - generic [ref=e650]: useSupportLibrary = true
+                - generic [ref=e652]: "}"
+                - generic [ref=e654]: "}"
+                - generic [ref=e657]: "signingConfigs {"
+    - paragraph [ref=e45]: DLO v0.1.0 · Double-Loop Orchestrator for autonomous development · 🚀
+  - button "Open Next.js Dev Tools" [ref=e52] [cursor=pointer]:
+    - img [ref=e53]
+  - alert [ref=e46]
+  - generic [ref=e383]:
+    - alert
+    - alert

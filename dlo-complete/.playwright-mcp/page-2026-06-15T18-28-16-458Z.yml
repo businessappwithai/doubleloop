@@ -1,0 +1,117 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - heading "DLO Pipeline Controller" [level=1] [ref=e6]:
+          - img [ref=e7]
+          - text: DLO Pipeline Controller
+        - paragraph [ref=e9]: Autonomous development pipeline orchestrator
+      - generic [ref=e10]:
+        - button "Config Keys & Limits" [ref=e11] [cursor=pointer]:
+          - img [ref=e12]
+          - text: Config Keys & Limits
+        - generic [ref=e57]:
+          - generic [ref=e58]: Phase
+          - generic [ref=e59]: EXECUTION_RUNNING
+    - generic [ref=e16]:
+      - img [ref=e17]
+      - generic [ref=e19]:
+        - text: No Gemini API key configured. Chat requires a key — add it in
+        - button "Config Keys & Limits" [ref=e20] [cursor=pointer]
+        - text: or set
+        - code [ref=e21]: GEMINI_API_KEY
+        - text: in your environment.
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - button "Status" [ref=e63] [cursor=pointer]:
+          - img [ref=e64]
+          - text: Status
+        - button "Workspace" [active] [ref=e164] [cursor=pointer]:
+          - img [ref=e165]
+          - text: Workspace
+      - generic [ref=e196]:
+        - generic [ref=e197]:
+          - generic [ref=e198]: 2 files
+          - generic [ref=e199]:
+            - generic [ref=e200]: 23:58:15
+            - button "Refresh" [ref=e201] [cursor=pointer]:
+              - img [ref=e202]
+        - generic [ref=e207]:
+          - img [ref=e208]
+          - generic [ref=e210]: Select lines in the editor to steer the code at that location
+        - generic [ref=e211]:
+          - generic [ref=e212]:
+            - button "DOMAIN.md DOMAIN.md" [ref=e213] [cursor=pointer]:
+              - generic [ref=e214]: DOMAIN.md
+              - generic [ref=e215]: DOMAIN.md
+            - button "PLAN.md PLAN.md" [ref=e216] [cursor=pointer]:
+              - generic [ref=e217]: PLAN.md
+              - generic [ref=e218]: PLAN.md
+          - code [ref=e223]:
+            - generic [ref=e224]:
+              - textbox "Editor content"
+              - textbox [ref=e225]
+              - generic [ref=e227]:
+                - generic [ref=e230]: "1"
+                - generic [ref=e232]: "2"
+                - generic [ref=e234]: "3"
+                - generic [ref=e236]: "4"
+                - generic [ref=e238]: "5"
+                - generic [ref=e240]: "6"
+                - generic [ref=e242]: "7"
+                - generic [ref=e244]: "8"
+                - generic [ref=e245]:
+                  - generic [ref=e246] [cursor=pointer]: 
+                  - generic [ref=e247]: "9"
+                - generic [ref=e249]: "10"
+                - generic [ref=e251]: "11"
+                - generic [ref=e253]: "12"
+                - generic [ref=e255]: "13"
+                - generic [ref=e257]: "14"
+                - generic [ref=e259]: "15"
+                - generic [ref=e261]: "16"
+                - generic [ref=e263]: "17"
+                - generic [ref=e264]:
+                  - generic [ref=e265] [cursor=pointer]: 
+                  - generic [ref=e266]: "18"
+                - generic [ref=e268]: "19"
+                - generic [ref=e270]: "20"
+                - generic [ref=e272]: "21"
+                - generic [ref=e274]: "22"
+                - generic [ref=e276]: "23"
+                - generic [ref=e278]: "24"
+                - generic [ref=e280]: "25"
+                - generic [ref=e282]: "26"
+                - generic [ref=e283]:
+                  - generic [ref=e284] [cursor=pointer]: 
+                  - generic [ref=e285]: "27"
+              - generic [ref=e331]:
+                - generic [ref=e333]: "# Domain Document — Android Todo Application"
+                - generic [ref=e336]: "> Source: User-provided research"
+                - generic [ref=e338]: "> Created: 2026-06-15T18:22:34.902Z"
+                - generic [ref=e341]: "# Android Todo Application - Full Requirements"
+                - generic [ref=e344]: "## Core Features"
+                - generic [ref=e346]: 1. **Task Management**
+                - generic [ref=e348]: "- Create, read, update, delete (CRUD) tasks"
+                - generic [ref=e350]: "- Task title (required) and description (optional)"
+                - generic [ref=e352]: "- Due date and time picker"
+                - generic [ref=e354]: "- Priority levels (High, Medium, Low)"
+                - generic [ref=e356]: "- Category/Tags for organization"
+                - generic [ref=e358]: "- Recurring tasks support"
+                - generic [ref=e360]: "- Task completion status with checkmark"
+                - generic [ref=e363]: 2. **User Interface**
+                - generic [ref=e365]: "- Material Design 3 with theming"
+                - generic [ref=e367]: "- Dark mode and light mode support"
+                - generic [ref=e369]: "- Bottom sheet for task creation/editing"
+                - generic [ref=e371]: "- Swipe actions (delete, complete)"
+                - generic [ref=e373]: "- Floating action button for new task"
+                - generic [ref=e375]: "- Search and filter functionality"
+                - generic [ref=e377]: "- Empty state handling"
+                - generic [ref=e380]: 3. **Data Persistence**
+    - paragraph [ref=e45]: DLO v0.1.0 · Double-Loop Orchestrator for autonomous development · 🚀
+  - button "Open Next.js Dev Tools" [ref=e52] [cursor=pointer]:
+    - img [ref=e53]
+  - alert [ref=e46]
+  - generic [ref=e383]:
+    - alert
+    - alert

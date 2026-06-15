@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Light Theme - Base -->
+    <style name="Base.Theme.TodoApp" parent="Theme.Material3.Light">
+        <!-- Primary Colors -->
+        <item name="colorPrimary">@color/md_theme_light_primary</item>
+        <item name="colorOnPrimary">@color/md_theme_light_on_primary</item>
+        <item name="colorPrimaryContainer">@color/md_theme_light_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/md_theme_light_on_primary_container</item>
+        
+        <!-- Secondary Colors -->
+        <item name="colorSecondary">@color/md_theme_light_secondary</item>
+        <item name="colorOnSecondary">@color/md_theme_light_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/md_theme_light_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/md_theme_light_on_secondary_container</item>
+        
+        <!-- Tertiary Colors -->
+        <item name="colorTertiary">@color/md_theme_light_tertiary</item>
+        <item name="colorOnTertiary">@color/md_theme_light_on_tertiary</item>
+        <item name="colorTertiaryContainer">@color/md_theme_light_tertiary_container</item>
+        <item name="colorOnTertiaryContainer">@color/md_theme_light_on_tertiary_container</item>
+        
+        <!-- Error Colors -->
+        <item name="colorError">@color/md_theme_light_error</item>
+        <item name="colorOnError">@color/md_theme_light_on_error</item>
+        <item name="colorErrorContainer">@color/md_theme_light_error_container</item>
+        <item name="colorOnErrorContainer">@color/md_theme_light_on_error_container</item>
+        
+        <!-- Background & Surface -->
+        <item name="colorBackground">@color/md_theme_light_background</item>
+        <item name="colorOnBackground">@color/md_theme_light_on_background</item>
+        <item name="colorSurface">@color/md_theme_light_surface</item>
+        <item name="colorOnSurface">@color/md_theme_light_on_surface</item>
+        <item name="colorSurfaceVariant">@color/md_theme_light_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/md_theme_light_on_surface_variant</item>
+        <item name="colorOutline">@color/md_theme_light_outline</item>
+        <item name="colorOutlineVariant">@color/md_theme_light_outline_variant</item>
+        <item name="colorScrim">@color/md_theme_light_scrim</item>
+        
+        <!-- Window Attributes -->
+        <item name="android:colorBackground">@color/md_theme_light_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:statusBarColor">@color/md_theme_light_background</item>
+        <item name="android:navigationBarColor">@color/md_theme_light_background</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:enforceNavigationBarTextContrast">false</item>
+        
+        <!-- Material 3 Shape -->
+        <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.TodoApp.SmallComponent</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.TodoApp.MediumComponent</item>
+        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.TodoApp.LargeComponent</item>
+        
+        <!-- Material 3 Typography -->
+        <item name="textAppearanceDisplayLarge">@style/TextAppearance.TodoApp.DisplayLarge</item>
+        <item name="textAppearanceDisplayMedium">@style/TextAppearance.TodoApp.DisplayMedium</item>
+        <item name="textAppearanceDisplaySmall">@style/TextAppearance.TodoApp.DisplaySmall</item>
+        <item name="textAppearanceHeadlineLarge">@style/TextAppearance.TodoApp.HeadlineLarge</item>
+        <item name="textAppearanceHeadlineMedium">@style/TextAppearance.TodoApp.HeadlineMedium</item>
+        <item name="textAppearanceHeadlineSmall">@style/TextAppearance.TodoApp.HeadlineSmall</item>
+        <item name="textAppearanceTitleLarge">@style/TextAppearance.TodoApp.TitleLarge</item>
+        <item name="textAppearanceTitleMedium">@style/TextAppearance.TodoApp.TitleMedium</item>
+        <item name="textAppearanceTitleSmall">@style/TextAppearance.TodoApp.TitleSmall</item>
+        <item name="textAppearanceBodyLarge">@style/TextAppearance.TodoApp.BodyLarge</item>
+        <item name="textAppearanceBodyMedium">@style/TextAppearance.TodoApp.BodyMedium</item>
+        <item name="textAppearanceBodySmall">@style/TextAppearance.TodoApp.BodySmall</item>
+        <item name="textAppearanceLabelLarge">@style/TextAppearance.TodoApp.LabelLarge</item>
+        <item name="textAppearanceLabelMedium">@style/TextAppearance.TodoApp.LabelMedium</item>
+        <item name="textAppearanceLabelSmall">@style/TextAppearance.TodoApp.LabelSmall</item>
+    </style>
+
+    <!-- Light Theme - Application -->
+    <style name="Theme.TodoApp" parent="Base.Theme.TodoApp" />
+
+    <!-- Dark Theme - Base -->
+    <style name="Base.Theme.TodoApp.Dark" parent="Theme.Material3.Dark">
+        <!-- Primary Colors -->
+        <item name="colorPrimary">@color/md_theme_dark_primary</item>
+        <item name="colorOnPrimary">@color/md_theme_dark_on_primary</item>
+        <item name="colorPrimaryContainer">@color/md_theme_dark_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/md_theme_dark_on_primary_container</item>
+        
+        <!-- Secondary Colors -->
+        <item name="colorSecondary">@color/md_theme_dark_secondary</item>
+        <item name="colorOnSecondary">@color/md_theme_dark_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/md_theme_dark_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/md_theme_dark_on_secondary_container</item>
+        
+        <!-- Tertiary Colors -->
+        <item name="colorTertiary">@color/md_theme_dark_tertiary</item>
+        <item name="colorOnTertiary">@color/md_theme_dark_on_tertiary</item>
+        <item name="colorTertiaryContainer">@color/md_theme_dark_tertiary_container</item>
+        <item name="colorOnTertiaryContainer">@color/md_theme_dark_on_tertiary_container</item>
+        
+        <!-- Error Colors -->
+        <item name="colorError">@color/md_theme_dark_error</item>
+        <item name="colorOnError">@color/md_theme_dark_on_error</item>
+        <item name="colorErrorContainer">@color/md_theme_dark_error_container</item>
+        <item name="colorOnErrorContainer">@color/md_theme_dark_on_error_container</item>
+        
+        <!-- Background & Surface -->
+        <item name="colorBackground">@color/md_theme_dark_background</item>
+        <item name="colorOnBackground">@color/md_theme_dark_on_background</item>
+        <item name="colorSurface">@color/md_theme_dark_surface</item>
+        <item name="colorOnSurface">@color/md_theme_dark_on_surface</item>
+        <item name="colorSurfaceVariant">@color/md_theme_dark_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/md_theme_dark_on_surface_variant</item>
+        <item name="colorOutline">@color/md_theme_dark_outline</item>
+        <item name="colorOutlineVariant">@color/md_theme_dark_outline_variant</item>
+        <item name="colorScrim">@color/md_theme_dark_scrim</item>
+        
+        <!-- Window Attributes -->
+        <item name="android:colorBackground">@color/md_theme_dark_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:statusBarColor">@color/md_theme_dark_background</item>
+        <item name="android:navigationBarColor">@color/md_theme_dark_background</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:enforceNavigationBarTextContrast">false</item>
+        
+        <!-- Material 3 Shape -->
+        <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.TodoApp.SmallComponent</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.TodoApp.MediumComponent</item>
+        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.TodoApp.LargeComponent</item>
+        
+        <!-- Material 3 Typography -->
+        <item name="textAppearanceDisplayLarge">@style/TextAppearance.TodoApp.DisplayLarge</item>
+        <item name="textAppearanceDisplayMedium">@style/TextAppearance.TodoApp.DisplayMedium</item>
+        <item name="textAppearanceDisplaySmall">@style/TextAppearance.TodoApp.DisplaySmall</item>
+        <item name="textAppearanceHeadlineLarge">@style/TextAppearance.TodoApp.HeadlineLarge</item>
+        <item name="textAppearanceHeadlineMedium">@style/TextAppearance.TodoApp.HeadlineMedium</item>
+        <item name="textAppearanceHeadlineSmall">@style/TextAppearance.TodoApp.HeadlineSmall</item>
+        <item name="textAppearanceTitleLarge">@style/TextAppearance.TodoApp.TitleLarge</item>
+        <item name="textAppearanceTitleMedium">@style/TextAppearance.TodoApp.TitleMedium</item>
+        <item name="textAppearanceTitleSmall">@style/TextAppearance.TodoApp.TitleSmall</item>
+        <item name="textAppearanceBodyLarge">@style/TextAppearance.TodoApp.BodyLarge</item>
+        <item name="textAppearanceBodyMedium">@style/TextAppearance.TodoApp.BodyMedium</item>
+        <item name="textAppearanceBodySmall">@style/TextAppearance.TodoApp.BodySmall</item>
+        <item name="textAppearanceLabelLarge">@style/TextAppearance.TodoApp.LabelLarge</item>
+        <item name="textAppearanceLabelMedium">@style/TextAppearance.TodoApp.LabelMedium</item>
+        <item name="textAppearanceLabelSmall">@style/TextAppearance.TodoApp.LabelSmall</item>
+    </style>
+
+    <!-- Dark Theme - Application -->
+    <style name="Theme.TodoApp.Dark" parent="Base.Theme.TodoApp.Dark" />
+
+    <!-- Shape Appearance Styles -->
+    <style name="ShapeAppearance.TodoApp.SmallComponent" parent="ShapeAppearance.Material3.SmallComponent" />
+    
+    <style name="ShapeAppearance.TodoApp.MediumComponent" parent="ShapeAppearance.Material3.MediumComponent" />
+    
+    <style name="ShapeAppearance.TodoApp.LargeComponent" parent="ShapeAppearance.Material3.LargeComponent" />
+
+    <!-- Text Appearance - Display Styles -->
+    <style name="TextAppearance.TodoApp.DisplayLarge" parent="TextAppearance.Material3.DisplayLarge" />
+    
+    <style name="TextAppearance.TodoApp.DisplayMedium" parent="TextAppearance.Material3.DisplayMedium" />
+    
+    <style name="TextAppearance.TodoApp.DisplaySmall" parent="TextAppearance.Material3.DisplaySmall" />
+
+    <!-- Text Appearance - Headline Styles -->
+    <style name="TextAppearance.TodoApp.HeadlineLarge" parent="TextAppearance.Material3.HeadlineLarge" />
+    
+    <style name="TextAppearance.TodoApp.HeadlineMedium" parent="TextAppearance.Material3.HeadlineMedium" />
+    
+    <style name="TextAppearance.TodoApp.HeadlineSmall" parent="TextAppearance.Material3.HeadlineSmall" />
+
+    <!-- Text Appearance - Title Styles -->
+    <style name="TextAppearance.TodoApp.TitleLarge" parent="TextAppearance.Material3.TitleLarge" />
+    
+    <style name="TextAppearance.TodoApp.TitleMedium" parent="TextAppearance.Material3.TitleMedium" />
+    
+    <style name="TextAppearance.TodoApp.TitleSmall" parent="TextAppearance.Material3.TitleSmall" />
+
+    <!-- Text Appearance - Body Styles -->
+    <style name="TextAppearance.TodoApp.BodyLarge" parent="TextAppearance.Material3.BodyLarge" />
+    
+    <style name="TextAppearance.TodoApp.BodyMedium" parent="TextAppearance.Material3.BodyMedium" />
+    
+    <style name="TextAppearance.TodoApp.BodySmall" parent="TextAppearance.Material3.BodySmall" />
+
+    <!-- Text Appearance - Label Styles -->
+    <style name="TextAppearance.TodoApp.LabelLarge" parent="TextAppearance.Material3.LabelLarge" />
+    
+    <style name="TextAppearance.TodoApp.LabelMedium" parent="TextAppearance.Material3.LabelMedium" />
+    
+    <style name="TextAppearance.TodoApp.LabelSmall" parent="TextAppearance.Material3.LabelSmall" />
+
+</resources>

@@ -1,0 +1,84 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - heading "DLO Pipeline Controller" [level=1] [ref=e6]:
+          - img [ref=e7]
+          - text: DLO Pipeline Controller
+        - paragraph [ref=e9]: Autonomous development pipeline orchestrator
+      - generic [ref=e10]:
+        - button "Config Keys & Limits" [ref=e11] [cursor=pointer]:
+          - img [ref=e12]
+          - text: Config Keys & Limits
+        - generic [ref=e57]:
+          - generic [ref=e58]: Phase
+          - generic [ref=e59]: EXECUTION_RUNNING
+    - generic [ref=e16]:
+      - img [ref=e17]
+      - generic [ref=e19]:
+        - text: No Gemini API key configured. Chat requires a key — add it in
+        - button "Config Keys & Limits" [ref=e20] [cursor=pointer]
+        - text: or set
+        - code [ref=e21]: GEMINI_API_KEY
+        - text: in your environment.
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - button "Status" [ref=e63] [cursor=pointer]:
+          - img [ref=e64]
+          - text: Status
+        - button "Workspace" [ref=e164] [cursor=pointer]:
+          - img [ref=e165]
+          - text: Workspace
+      - generic [ref=e384]:
+        - heading "Pipeline Status" [level=2] [ref=e385]
+        - generic [ref=e386]:
+          - generic [ref=e387]:
+            - paragraph [ref=e388]: Pipeline ID
+            - paragraph [ref=e389]: c7691230-0c46-40c8-b499-a57898ecaf74
+          - generic [ref=e390]:
+            - paragraph [ref=e391]: Phase
+            - paragraph [ref=e393]: EXECUTION_RUNNING
+          - generic [ref=e394]:
+            - paragraph [ref=e395]: History
+            - generic [ref=e396]:
+              - generic [ref=e400]: GATE1_PENDING23:52:34.902
+              - generic [ref=e404]: PLANNING_RUNNING23:54:30.649
+              - generic [ref=e408]: GATE2_PENDING23:55:00.799
+              - generic [ref=e411]: EXECUTION_RUNNING23:57:42.967
+          - generic [ref=e412]:
+            - paragraph [ref=e413]: Modules
+            - generic [ref=e414]:
+              - generic [ref=e415]:
+                - generic [ref=e416]:
+                  - img [ref=e417]
+                  - generic [ref=e419]: Android Infrastructure & Material Design 3 Setup
+                  - generic [ref=e420]: ×1
+                - generic [ref=e421]: build.gradle.kts · settings.gradle.kts
+              - generic [ref=e422]:
+                - generic [ref=e423]:
+                  - img [ref=e424]
+                  - generic [ref=e427]: Task Data Model & Room Database Persistence
+                  - generic [ref=e428]: ×0
+                - generic [ref=e429]: src/main/java/com/example/todoapp/data/Task.kt · src/main/java/com/example/todoapp/data/TaskDao.kt
+              - generic [ref=e430]:
+                - generic [ref=e431]:
+                  - img [ref=e432]
+                  - generic [ref=e435]: Compose UI, Task Management & Dark Mode
+                  - generic [ref=e436]: ×0
+                - generic [ref=e437]: src/main/java/com/example/todoapp/ui/theme/Theme.kt · src/main/java/com/example/todoapp/ui/screens/TaskListScreen.kt
+          - generic [ref=e438]:
+            - paragraph [ref=e439]: Context Notes
+            - generic [ref=e440]:
+              - paragraph [ref=e441]: Steer the pipeline at any stage — add constraints, corrections, or new requirements.
+              - textbox "e.g. 'Skip the filter tabs', 'Use Zustand instead of Context', 'Add dark mode'…" [ref=e442]
+              - button "Send Note" [disabled] [ref=e444]
+          - generic [ref=e445]:
+            - paragraph [ref=e446]: "Created: Jun 15, 23:52:34"
+            - paragraph [ref=e447]: "Updated: Jun 15, 23:57:54"
+    - paragraph [ref=e45]: DLO v0.1.0 · Double-Loop Orchestrator for autonomous development · 🚀
+  - button "Open Next.js Dev Tools" [ref=e52] [cursor=pointer]:
+    - img [ref=e53]
+  - alert [ref=e46]
+  - generic [ref=e383]:
+    - alert
+    - alert

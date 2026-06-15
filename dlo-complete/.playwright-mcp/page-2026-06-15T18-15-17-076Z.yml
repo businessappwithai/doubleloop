@@ -1,0 +1,94 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - heading "DLO Pipeline Controller" [level=1] [ref=e6]:
+          - img [ref=e7]
+          - text: DLO Pipeline Controller
+        - paragraph [ref=e9]: Autonomous development pipeline orchestrator
+      - generic [ref=e10]:
+        - button "Config Keys & Limits" [ref=e11] [cursor=pointer]:
+          - img [ref=e12]
+          - text: Config Keys & Limits
+        - generic [ref=e67]:
+          - generic [ref=e68]:
+            - generic [ref=e69]: Phase
+            - generic [ref=e70]: GATE2_PENDING
+          - generic [ref=e125]:
+            - generic [ref=e126]: HITL Gate Open
+            - generic [ref=e127]: TRIPARTITE_PLAN
+    - generic [ref=e16]:
+      - img [ref=e17]
+      - generic [ref=e19]:
+        - text: No Gemini API key configured. Chat requires a key — add it in
+        - button "Config Keys & Limits" [ref=e20] [cursor=pointer]
+        - text: or set
+        - code [ref=e21]: GEMINI_API_KEY
+        - text: in your environment.
+    - generic [ref=e24]:
+      - button "Status" [ref=e74] [cursor=pointer]:
+        - img [ref=e75]
+        - text: Status
+      - generic [ref=e77]:
+        - heading "Pipeline Status" [level=2] [ref=e78]
+        - generic [ref=e79]:
+          - generic [ref=e80]:
+            - paragraph [ref=e81]: Pipeline ID
+            - paragraph [ref=e82]: 090e03a6-e96f-4dfb-ae90-10e8391529e4
+          - generic [ref=e83]:
+            - paragraph [ref=e84]: Phase
+            - paragraph [ref=e86]: GATE2_PENDING
+          - generic [ref=e87]:
+            - paragraph [ref=e88]: History
+            - generic [ref=e89]:
+              - generic [ref=e92]: GATE1_PENDING23:41:18.356
+              - generic [ref=e124]: PLANNING_RUNNING23:43:14.707
+              - generic [ref=e131]: GATE2_PENDING23:43:48.851
+          - generic [ref=e132]:
+            - generic [ref=e133]:
+              - img [ref=e134]
+              - generic [ref=e136]:
+                - paragraph [ref=e137]: "Review: Tripartite Plan"
+                - paragraph [ref=e138]: Approve to proceed · Steer to revise · Reject to fail
+            - generic [ref=e139]:
+              - button "CEO Plan" [ref=e140] [cursor=pointer]
+              - button "Architecture" [ref=e141] [cursor=pointer]
+              - button "Engineering" [ref=e142] [cursor=pointer]
+            - generic [ref=e144]: Build a secure, offline CLI password manager with military-grade AES-256 encryption and local storage, giving users complete control over their credentials without relying on cloud services.
+            - generic [ref=e145]:
+              - button "Confirm APPROVE" [active] [ref=e176] [cursor=pointer]
+              - button "Cancel" [ref=e177] [cursor=pointer]
+          - generic [ref=e149]:
+            - paragraph [ref=e150]: Modules
+            - generic [ref=e151]:
+              - generic [ref=e152]:
+                - generic [ref=e153]:
+                  - img [ref=e154]
+                  - generic [ref=e157]: Project Infrastructure & Encryption Setup
+                  - generic [ref=e158]: ×0
+                - generic [ref=e159]: package.json · tsconfig.json
+              - generic [ref=e160]:
+                - generic [ref=e161]:
+                  - img [ref=e162]
+                  - generic [ref=e165]: Password Management Core & Database
+                  - generic [ref=e166]: ×0
+                - generic [ref=e167]: src/database.ts · src/models.ts
+              - generic [ref=e168]:
+                - generic [ref=e169]:
+                  - img [ref=e170]
+                  - generic [ref=e173]: CLI Commands & Backup/Restore Features
+                  - generic [ref=e174]: ×0
+                - generic [ref=e175]: src/commands/search.ts · src/commands/export.ts
+          - generic [ref=e106]:
+            - paragraph [ref=e107]: Context Notes
+            - generic [ref=e108]:
+              - paragraph [ref=e109]: Steer the pipeline at any stage — add constraints, corrections, or new requirements.
+              - textbox "e.g. 'Skip the filter tabs', 'Use Zustand instead of Context', 'Add dark mode'…" [ref=e110]
+              - button "Send Note" [disabled] [ref=e112]
+          - generic [ref=e113]:
+            - paragraph [ref=e114]: "Created: Jun 15, 23:41:18"
+            - paragraph [ref=e115]: "Updated: Jun 15, 23:43:48"
+    - paragraph [ref=e38]: DLO v0.1.0 · Double-Loop Orchestrator for autonomous development · 🚀
+  - button "Open Next.js Dev Tools" [ref=e62] [cursor=pointer]:
+    - img [ref=e63]
+  - alert [ref=e66]

@@ -1,0 +1,66 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - heading "DLO Pipeline Controller" [level=1] [ref=e6]:
+          - img [ref=e7]
+          - text: DLO Pipeline Controller
+        - paragraph [ref=e9]: Autonomous development pipeline orchestrator
+      - generic [ref=e10]:
+        - button "Config Keys & Limits" [ref=e11] [cursor=pointer]:
+          - img [ref=e12]
+          - text: Config Keys & Limits
+        - generic [ref=e56]:
+          - generic [ref=e57]:
+            - generic [ref=e58]: Phase
+            - generic [ref=e59]: GATE1_PENDING
+          - generic [ref=e60]:
+            - generic [ref=e61]: HITL Gate Open
+            - generic [ref=e62]: DOMAIN_DOCUMENT
+    - generic [ref=e16]:
+      - img [ref=e17]
+      - generic [ref=e19]:
+        - text: No Gemini API key configured. Chat requires a key — add it in
+        - button "Config Keys & Limits" [ref=e20] [cursor=pointer]
+        - text: or set
+        - code [ref=e21]: GEMINI_API_KEY
+        - text: in your environment.
+    - generic [ref=e24]:
+      - button "Status" [ref=e63] [cursor=pointer]:
+        - img [ref=e64]
+        - text: Status
+      - generic [ref=e66]:
+        - heading "Pipeline Status" [level=2] [ref=e67]
+        - generic [ref=e68]:
+          - generic [ref=e69]:
+            - paragraph [ref=e70]: Pipeline ID
+            - paragraph [ref=e71]: c7691230-0c46-40c8-b499-a57898ecaf74
+          - generic [ref=e72]:
+            - paragraph [ref=e73]: Phase
+            - paragraph [ref=e75]: GATE1_PENDING
+          - generic [ref=e76]:
+            - paragraph [ref=e77]: History
+            - generic [ref=e81]: GATE1_PENDING23:52:34.902
+          - generic [ref=e82]:
+            - generic [ref=e83]:
+              - img [ref=e84]
+              - generic [ref=e86]:
+                - paragraph [ref=e87]: "Review: Domain Document"
+                - paragraph [ref=e88]: Approve to proceed · Steer to revise · Reject to fail
+            - generic [ref=e90]: "# Android Todo Application - Full Requirements ## Core Features 1. **Task Management** - Create, read, update, delete (CRUD) tasks - Task title (required) and description (optional) - Due date and time picker - Priority levels (High, Medium, Low) - Category/Tags for organization - Recurring tasks support - Task completion status with checkmark 2. **User Interface** - Material Design 3 with theming - Dark mode and light mode support - Bottom sheet for task creation/editing - Swipe actions (delete, complete) - Floating action button for new task - Search and filter functionality - Empty state handling 3. **Data Persistence** - Local storage with Room database - Automatic data backup - Cloud sync with Firestore (optional) - Data encryption for sensitive info 4. **Notifications** - Due date reminders - Recurring task alerts - Daily summary notifications - Customizable notification settings 5. **Advanced Features** - Sorting (by date, priority, alphabetical) - Filtering (completed, active, by category) - Undo/Redo functionality - Statistics dashboard (tasks completed, overdue) - Widget for home screen - Share tasks with others ## Technical Architecture - **Language**: Kotlin - **UI Framework**: Jetpack Compose (modern approach) - **Architecture**: MVVM with Coroutines and Flow - **Database**: Room with SQLite - **Dependency Injection**: Hilt - **Networking**: Retrofit + OkHttp (for sync) - **Data Sync**: Firebase Firestore (optional) - **Notifications**: WorkManager + AlarmManager - **Testing**: JUnit, Espresso, MockK ## Project Structure - `app/` - Main application module - `data/` - Data layer (Room, repositories) - `domain/` - Business logic (use cases) - `presentation/` - UI layer (Compose screens) - `utils/` - Helper utilities and extensions ## Code Quality Standards - Minimum 80% test coverage - SOLID principles adherence - Clean code with meaningful names - Comprehensive error handling - Proper logging for debugging - Performance optimization for list rendering ## User Flows 1. Launch → Task list display → Create task → Task added to list 2. Long press task → Edit → Update task in database 3. Swipe task left → Delete confirmation → Task removed 4. Tap filter button → Select filters → List updated 5. Due date reminder → Notification → User can tap to view task ## Deliverables 1. Complete Kotlin source code 2. Unit tests with good coverage 3. UI tests for critical flows 4. README with setup instructions 5. Gradle configuration with dependencies 6. Proguard rules for release builds"
+            - generic [ref=e91]:
+              - button "Confirm APPROVE" [active] [ref=e105] [cursor=pointer]
+              - button "Cancel" [ref=e106] [cursor=pointer]
+          - generic [ref=e95]:
+            - paragraph [ref=e96]: Context Notes
+            - generic [ref=e97]:
+              - paragraph [ref=e98]: Steer the pipeline at any stage — add constraints, corrections, or new requirements.
+              - textbox "e.g. 'Skip the filter tabs', 'Use Zustand instead of Context', 'Add dark mode'…" [ref=e99]
+              - button "Send Note" [disabled] [ref=e101]
+          - generic [ref=e102]:
+            - paragraph [ref=e103]: "Created: Jun 15, 23:52:34"
+            - paragraph [ref=e104]: "Updated: Jun 15, 23:52:34"
+    - paragraph [ref=e45]: DLO v0.1.0 · Double-Loop Orchestrator for autonomous development · 🚀
+  - button "Open Next.js Dev Tools" [ref=e52] [cursor=pointer]:
+    - img [ref=e53]
+  - alert [ref=e46]

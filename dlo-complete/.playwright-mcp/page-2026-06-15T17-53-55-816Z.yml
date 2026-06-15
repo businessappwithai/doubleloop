@@ -1,0 +1,61 @@
+- main [ref=e2]:
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - img [ref=e6]
+      - generic [ref=e8]: DLO
+    - link "Open Controller" [ref=e9] [cursor=pointer]:
+      - /url: /chat
+      - text: Open Controller
+      - img [ref=e10]
+  - generic [ref=e12]:
+    - generic [ref=e13]:
+      - heading "Autonomous Development At Scale" [level=1] [ref=e14]
+      - paragraph [ref=e15]: DLO orchestrates a double-loop pipeline that autonomously generates production-grade software with human oversight at critical decision gates.
+      - link "Start Building" [ref=e16] [cursor=pointer]:
+        - /url: /chat
+        - text: Start Building
+        - img [ref=e17]
+    - generic [ref=e19]:
+      - generic [ref=e20]:
+        - img [ref=e21]
+        - heading "Multi-Agent Orchestration" [level=3] [ref=e31]
+        - paragraph [ref=e32]: Gemini Deep Research synthesizes domain knowledge. Claude Code plans architecture. CodeWhale executes. All coordinated through a resilient, event-sourced kernel.
+      - generic [ref=e33]:
+        - img [ref=e34]
+        - heading "Double-Loop Verification" [level=3] [ref=e36]
+        - paragraph [ref=e37]: CodeWhale's inner loop fixes local LSP errors. Claude Code's outer loop reviews against deterministic exit clauses and architectural rules — catch logic drift before it compounds.
+      - generic [ref=e38]:
+        - img [ref=e39]
+        - heading "Human-in-the-Loop at Gates" [level=3] [ref=e41]
+        - paragraph [ref=e42]: Five critical decision points (research synthesis, plan approval, module escalations) go to humans. Approve, steer, or reject — the journal captures every decision immutably.
+    - generic [ref=e43]:
+      - heading "Five-Phase Pipeline" [level=2] [ref=e44]
+      - generic [ref=e45]:
+        - generic [ref=e46]:
+          - generic [ref=e48]: I
+          - heading "Research" [level=3] [ref=e49]
+          - paragraph [ref=e50]: Gemini Deep Research acquires domain knowledge via background interactions
+        - generic [ref=e51]:
+          - generic [ref=e53]: II
+          - heading "Planning" [level=3] [ref=e54]
+          - paragraph [ref=e55]: Claude Code produces CEO, Architectural, and Engineering plans
+        - generic [ref=e56]:
+          - generic [ref=e58]: III/IV
+          - heading "Execution" [level=3] [ref=e59]
+          - paragraph [ref=e60]: CodeWhale (DeepSeek V4) swarm executes modules; Claude Code verifies
+        - generic [ref=e61]:
+          - generic [ref=e63]: V
+          - heading "Finalization" [level=3] [ref=e64]
+          - paragraph [ref=e65]: Linter, tester, builder subagents polish the codebase
+        - generic [ref=e66]:
+          - generic [ref=e68]: Report
+          - heading "Summary" [level=3] [ref=e69]
+          - paragraph [ref=e70]: Cost breakdown, commit list, and execution metrics
+    - generic [ref=e71]:
+      - heading "Ready to orchestrate?" [level=2] [ref=e72]
+      - paragraph [ref=e73]: The DLO controller is a CopilotKit-powered chat interface. Initialize a pipeline, monitor progress, resolve HITL gates, and view generated artifacts—all through natural conversation.
+      - link "Open Chat Controller" [ref=e74] [cursor=pointer]:
+        - /url: /chat
+        - text: Open Chat Controller
+        - img [ref=e75]
+  - paragraph [ref=e78]: DLO v0.1.0 · Built for autonomous, verifiable software generation

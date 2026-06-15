@@ -1,0 +1,9 @@
+I notice a mismatch: you've requested a `tsconfig.json` (TypeScript configuration for Node.js), but the research/requirements specify this is a **Python 3.10 project** using Click framework, cryptography library, and SQLite.
+
+A `tsconfig.json` is not needed for a Python CLI project.
+
+Did you mean to request:
+- `pyproject.toml` or `setup.py` (Python project configuration)?
+- Something else for the Node.js/TypeScript layer if there's a companion frontend?
+
+Please clarify the tech stack for this specific file.

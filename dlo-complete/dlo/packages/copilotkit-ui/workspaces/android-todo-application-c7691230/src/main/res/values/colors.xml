@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material Design 3 Color Palette - Light Theme -->
+    
+    <!-- Primary Color System -->
+    <color name="primary">#6750A4</color>
+    <color name="onPrimary">#FFFFFF</color>
+    <color name="primaryContainer">#EADDFF</color>
+    <color name="onPrimaryContainer">#21005E</color>
+    
+    <!-- Secondary Color System -->
+    <color name="secondary">#625B71</color>
+    <color name="onSecondary">#FFFFFF</color>
+    <color name="secondaryContainer">#E8DEF8</color>
+    <color name="onSecondaryContainer">#1D192B</color>
+    
+    <!-- Tertiary Color System -->
+    <color name="tertiary">#7D5260</color>
+    <color name="onTertiary">#FFFFFF</color>
+    <color name="tertiaryContainer">#FFD8E4</color>
+    <color name="onTertiaryContainer">#31111D</color>
+    
+    <!-- Background and Surface Colors -->
+    <color name="background">#FFFBFE</color>
+    <color name="onBackground">#1C1B1F</color>
+    <color name="surface">#FFFBFE</color>
+    <color name="surface_dim">#DED8E1</color>
+    <color name="surface_bright">#FFFBFE</color>
+    <color name="onSurface">#1C1B1F</color>
+    <color name="surfaceVariant">#E7E0EC</color>
+    <color name="onSurfaceVariant">#49454E</color>
+    
+    <!-- Error Color System -->
+    <color name="error">#B3261E</color>
+    <color name="onError">#FFFFFF</color>
+    <color name="errorContainer">#F9DEDC</color>
+    <color name="onErrorContainer">#410E0B</color>
+    
+    <!-- Outline Colors -->
+    <color name="outline">#79747E</color>
+    <color name="outlineVariant">#CAC4D0</color>
+    <color name="scrim">#000000</color>
+    
+    <!-- Todo App Semantic Colors -->
+    
+    <!-- Priority Levels -->
+    <color name="priority_high">#D32F2F</color>
+    <color name="priority_medium">#F57C00</color>
+    <color name="priority_low">#388E3C</color>
+    
+    <!-- Task Status -->
+    <color name="task_completed">#4CAF50</color>
+    <color name="task_overdue">#C62828</color>
+    <color name="task_pending">#1976D2</color>
+    <color name="task_inactive">#9E9E9E</color>
+    <color name="task_in_progress">#FBC02D</color>
+    
+    <!-- Category Colors -->
+    <color name="category_work">#3F51B5</color>
+    <color name="category_personal">#E91E63</color>
+    <color name="category_shopping">#FF9800</color>
+    <color name="category_health">#4CAF50</color>
+    <color name="category_finance">#009688</color>
+    <color name="category_travel">#2196F3</color>
+    <color name="category_entertainment">#9C27B0</color>
+    <color name="category_education">#00ACC1</color>
+    
+    <!-- Status Indicators -->
+    <color name="success">#4CAF50</color>
+    <color name="warning">#FF9800</color>
+    <color name="info">#2196F3</color>
+    
+    <!-- UI Elements -->
+    <color name="divider">#E0E0E0</color>
+    <color name="shadow">#000000</color>
+    <color name="transparent_black">#1A000000</color>
+    <color name="transparent_white">#1AFFFFFF</color>
+    <color name="fab_background">#6750A4</color>
+    <color name="fab_foreground">#FFFFFF</color>
+    
+    <!-- Skeleton Loading -->
+    <color name="skeleton_base">#E0E0E0</color>
+    <color name="skeleton_highlight">#F5F5F5</color>
+    
+    <!-- Additional Neutral Colors -->
+    <color name="gray_50">#FAFAFA</color>
+    <color name="gray_100">#F5F5F5</color>
+    <color name="gray_200">#EEEEEE</color>
+    <color name="gray_300">#E0E0E0</color>
+    <color name="gray_400">#BDBDBD</color>
+    <color name="gray_500">#9E9E9E</color>
+    <color name="gray_600">#757575</color>
+    <color name="gray_700">#616161</color>
+    <color name="gray_800">#424242</color>
+    <color name="gray_900">#212121</color>
+</resources>

@@ -1,0 +1,67 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - heading "DLO Pipeline Controller" [level=1] [ref=e6]:
+          - img [ref=e7]
+          - text: DLO Pipeline Controller
+        - paragraph [ref=e9]: Autonomous development pipeline orchestrator
+      - generic [ref=e10]:
+        - button "Config Keys & Limits" [ref=e11] [cursor=pointer]:
+          - img [ref=e12]
+          - text: Config Keys & Limits
+        - generic [ref=e162]:
+          - generic [ref=e163]:
+            - generic [ref=e164]: Phase
+            - generic [ref=e165]: GATE1_PENDING
+          - generic [ref=e166]:
+            - generic [ref=e167]: HITL Gate Open
+            - generic [ref=e168]: DOMAIN_DOCUMENT
+    - generic [ref=e16]:
+      - img [ref=e17]
+      - generic [ref=e19]:
+        - text: No Gemini API key configured. Chat requires a key — add it in
+        - button "Config Keys & Limits" [ref=e20] [cursor=pointer]
+        - text: or set
+        - code [ref=e21]: GEMINI_API_KEY
+        - text: in your environment.
+    - generic [ref=e24]:
+      - button "Status" [ref=e169] [cursor=pointer]:
+        - img [ref=e170]
+        - text: Status
+      - generic [ref=e172]:
+        - heading "Pipeline Status" [level=2] [ref=e173]
+        - generic [ref=e174]:
+          - generic [ref=e175]:
+            - paragraph [ref=e176]: Pipeline ID
+            - paragraph [ref=e177]: 33393ad5-e664-40de-952b-63137fb6d979
+          - generic [ref=e178]:
+            - paragraph [ref=e179]: Phase
+            - paragraph [ref=e181]: GATE1_PENDING
+          - generic [ref=e182]:
+            - paragraph [ref=e183]: History
+            - generic [ref=e187]: GATE1_PENDING23:37:24.455
+          - generic [ref=e188]:
+            - generic [ref=e189]:
+              - img [ref=e190]
+              - generic [ref=e192]:
+                - paragraph [ref=e193]: "Review: Domain Document"
+                - paragraph [ref=e194]: Approve to proceed · Steer to revise · Reject to fail
+            - generic [ref=e196]: "# Web Chat Application Requirements ## Core Features - User registration and login with JWT authentication - Real-time message sending and receiving using WebSockets - Chat rooms/channels - User presence tracking (online/offline status) - Message history with pagination - User profiles with avatars - Message reactions and replies - File sharing capability ## Technical Stack - Frontend: React 19 with TypeScript - Backend: Node.js with Express - Database: PostgreSQL with Prisma ORM - Real-time: Socket.io for WebSocket communication - Authentication: JWT + refresh tokens - Storage: AWS S3 for file uploads ## Architecture - Microservices: Auth service, Chat service, File service - Real-time event bus using Socket.io - Redis for caching and session management - Docker containerization"
+            - generic [ref=e197]:
+              - button "Approve" [ref=e198] [cursor=pointer]
+              - button "Steer" [ref=e199] [cursor=pointer]
+              - button "Reject" [ref=e200] [cursor=pointer]
+          - generic [ref=e201]:
+            - paragraph [ref=e202]: Context Notes
+            - generic [ref=e203]:
+              - paragraph [ref=e204]: Steer the pipeline at any stage — add constraints, corrections, or new requirements.
+              - textbox "e.g. 'Skip the filter tabs', 'Use Zustand instead of Context', 'Add dark mode'…" [ref=e205]
+              - button "Send Note" [disabled] [ref=e207]
+          - generic [ref=e208]:
+            - paragraph [ref=e209]: "Created: Jun 15, 23:37:24"
+            - paragraph [ref=e210]: "Updated: Jun 15, 23:37:24"
+    - paragraph [ref=e38]: DLO v0.1.0 · Double-Loop Orchestrator for autonomous development · 🚀
+  - button "Open Next.js Dev Tools" [ref=e62] [cursor=pointer]:
+    - img [ref=e63]
+  - alert [ref=e66]
