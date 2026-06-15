@@ -40,6 +40,8 @@ export interface PipelineState {
   phase: string;
   createdAt: string;
   lastTransitionAt: string;
+  phaseHistory?: Array<{ phase: string; timestamp: string }>;
+  contextNotes?: Array<{ note: string; timestamp: string }>;
   domainDocument?: {
     markdown: string;
     citations: Array<{ url: string; title: string }>;
@@ -66,6 +68,11 @@ export interface PipelineState {
     exhibits: any[];
   } | null;
   error?: string;
+}
+
+export function pushPhaseHistory(state: PipelineState, phase: string): void {
+  if (!state.phaseHistory) state.phaseHistory = [];
+  state.phaseHistory.push({ phase, timestamp: new Date().toISOString() });
 }
 
 const getPipelinesDir = () => {
@@ -165,6 +172,7 @@ Format the output strictly as Markdown. Do not include markdown code block wraps
 
     state.phase = "GATE1_PENDING";
     state.lastTransitionAt = new Date().toISOString();
+    pushPhaseHistory(state, "GATE1_PENDING");
     state.domainDocument = {
       markdown,
       citations: [
@@ -181,6 +189,7 @@ Format the output strictly as Markdown. Do not include markdown code block wraps
     console.log(`Research phase completed for pipeline ${pipelineId}`);
   } catch (err: any) {
     state.phase = "FAILED";
+    pushPhaseHistory(state, "FAILED");
     const raw: string = err.message || String(err);
     if ((raw.includes("429") || raw.includes("Too Many Requests")) && raw.includes("limit: 0")) {
       state.error = "Gemini free-tier quota exhausted. Upgrade to a paid plan at https://ai.google.dev or use a different API key.";
@@ -202,7 +211,6 @@ export async function runPlanningBackground(pipelineId: string): Promise<void> {
     // If the planner model is a Gemini model, use the Gemini API key, otherwise default to Anthropic
     const plannerModel = state.config?.providers?.planner?.model || "claude-3-5-sonnet-latest";
     const isGemini = plannerModel.toLowerCase().startsWith("gemini") || plannerModel.toLowerCase().startsWith("google");
-    const anthropicBaseUrl = process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com";
     const usingProxy = !!process.env.ANTHROPIC_BASE_URL;
 
     const apiKey = isGemini
@@ -230,7 +238,7 @@ export async function runPlanningBackground(pipelineId: string): Promise<void> {
     // Greedy match: capture from opening ```(json)? to the LAST ``` in the string.
     // Must be greedy (not lazy) so nested ``` inside JSON string values don't truncate early.
     const codeBlock = jsonText.match(/```(?:json)?\s*([\s\S]*)```\s*$/);
-    if (codeBlock) {
+    if (codeBlock && codeBlock[1]) {
       jsonText = codeBlock[1].trim();
     } else {
       // Fall back to first-brace / last-brace extraction
@@ -244,6 +252,7 @@ export async function runPlanningBackground(pipelineId: string): Promise<void> {
 
     state.phase = "GATE2_PENDING";
     state.lastTransitionAt = new Date().toISOString();
+    pushPhaseHistory(state, "GATE2_PENDING");
     state.plan = {
       ceoPlan: planData.ceoPlan || "CEO Strategy Approved.",
       architecturePlan: planData.architecturePlan || "System Architecture Approved.",
@@ -268,6 +277,7 @@ export async function runPlanningBackground(pipelineId: string): Promise<void> {
     console.log(`Planning phase completed for pipeline ${pipelineId}`);
   } catch (err: any) {
     state.phase = "FAILED";
+    pushPhaseHistory(state, "FAILED");
     state.error = err.message || String(err);
     state.lastTransitionAt = new Date().toISOString();
     console.error(`Planning phase failed for pipeline ${pipelineId}:`, err);
@@ -283,6 +293,7 @@ export async function runExecutionBackground(pipelineId: string): Promise<void> 
   const modules = state.board?.modules || [];
   if (modules.length === 0) {
     state.phase = "COMPLETED";
+    pushPhaseHistory(state, "COMPLETED");
     state.lastTransitionAt = new Date().toISOString();
     await savePipeline(state);
     return;
@@ -359,6 +370,7 @@ export async function runExecutionBackground(pipelineId: string): Promise<void> 
   const finalState = await getPipeline(pipelineId);
   if (finalState && finalState.phase === "EXECUTION_RUNNING") {
     finalState.phase = "COMPLETED";
+    pushPhaseHistory(finalState, "COMPLETED");
     finalState.lastTransitionAt = new Date().toISOString();
     await savePipeline(finalState);
   }

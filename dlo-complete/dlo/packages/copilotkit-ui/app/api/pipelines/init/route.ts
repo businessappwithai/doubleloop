@@ -19,15 +19,18 @@ export async function POST(request: Request) {
 
     const hasManualResearch = typeof researchMarkdown === "string" && researchMarkdown.trim().length > 0;
 
+    const initialPhase = hasManualResearch ? "GATE1_PENDING" : "RESEARCH_RUNNING";
     const pipeline: Record<string, unknown> = {
       pipelineId,
       projectName,
       objectivesMarkdown,
       workspaceDir: workspaceDir || process.cwd(),
       config: config || {},
-      phase: hasManualResearch ? "GATE1_PENDING" : "RESEARCH_RUNNING",
+      phase: initialPhase,
       createdAt: now,
       lastTransitionAt: now,
+      phaseHistory: [{ phase: initialPhase, timestamp: now }],
+      contextNotes: [],
     };
 
     if (hasManualResearch) {

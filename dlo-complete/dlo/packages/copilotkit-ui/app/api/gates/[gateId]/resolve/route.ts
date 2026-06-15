@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { 
-  findPipelineByGateId, 
-  savePipeline, 
-  runResearchBackground, 
-  runPlanningBackground, 
-  runExecutionBackground 
+import {
+  findPipelineByGateId,
+  savePipeline,
+  runResearchBackground,
+  runPlanningBackground,
+  runExecutionBackground,
+  pushPhaseHistory,
 } from "@/lib/pipeline-helper";
 
 export async function POST(
@@ -24,22 +25,23 @@ export async function POST(
     if (decision === "APPROVE") {
       if (state.activeGate?.kind === "DOMAIN_DOCUMENT") {
         state.phase = "PLANNING_RUNNING";
+        pushPhaseHistory(state, "PLANNING_RUNNING");
         state.activeGate = null;
         state.lastTransitionAt = new Date().toISOString();
         await savePipeline(state);
-        // Kick off planning in background
         void runPlanningBackground(state.pipelineId);
       } else if (state.activeGate?.kind === "TRIPARTITE_PLAN") {
         state.phase = "EXECUTION_RUNNING";
+        pushPhaseHistory(state, "EXECUTION_RUNNING");
         state.activeGate = null;
         state.lastTransitionAt = new Date().toISOString();
         await savePipeline(state);
-        // Kick off execution in background
         void runExecutionBackground(state.pipelineId);
       }
     } else if (decision === "STEER") {
       if (state.activeGate?.kind === "DOMAIN_DOCUMENT") {
         state.phase = "RESEARCH_RUNNING";
+        pushPhaseHistory(state, "RESEARCH_RUNNING");
         state.activeGate = null;
         state.objectivesMarkdown = `${state.objectivesMarkdown}\n\n[Steering Feedback]: ${instructions || ""}`;
         state.lastTransitionAt = new Date().toISOString();
@@ -47,6 +49,7 @@ export async function POST(
         void runResearchBackground(state.pipelineId);
       } else if (state.activeGate?.kind === "TRIPARTITE_PLAN") {
         state.phase = "PLANNING_RUNNING";
+        pushPhaseHistory(state, "PLANNING_RUNNING");
         state.activeGate = null;
         state.objectivesMarkdown = `${state.objectivesMarkdown}\n\n[Steering Feedback]: ${instructions || ""}`;
         state.lastTransitionAt = new Date().toISOString();
@@ -55,6 +58,7 @@ export async function POST(
       }
     } else if (decision === "REJECT") {
       state.phase = "FAILED";
+      pushPhaseHistory(state, "FAILED");
       state.activeGate = null;
       state.lastTransitionAt = new Date().toISOString();
       await savePipeline(state);

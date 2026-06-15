@@ -50,6 +50,9 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
   const [gateReason, setGateReason] = useState("");
   const [gateSubmitting, setGateSubmitting] = useState(false);
   const [gateExhibitTab, setGateExhibitTab] = useState(0);
+  const [contextNote, setContextNote] = useState("");
+  const [isSubmittingNote, setIsSubmittingNote] = useState(false);
+  const [noteSubmitMsg, setNoteSubmitMsg] = useState<string | null>(null);
   const [config, setConfig] = useState({
     copilotModel: "gemini-1.5-pro",
     providers: {
@@ -304,6 +307,28 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
     }
   };
 
+  const submitContextNote = async () => {
+    if (!contextNote.trim() || !store.activePipelineId) return;
+    setIsSubmittingNote(true);
+    setNoteSubmitMsg(null);
+    try {
+      const res = await fetch(`/api/pipelines/${store.activePipelineId}/context`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: contextNote.trim() }),
+      });
+      if (res.ok) {
+        setContextNote("");
+        setNoteSubmitMsg("Note saved.");
+        setTimeout(() => setNoteSubmitMsg(null), 2500);
+      } else {
+        setNoteSubmitMsg("Failed to save note.");
+      }
+    } finally {
+      setIsSubmittingNote(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-slate-900 to-slate-800">
       {/* Header */}
@@ -511,6 +536,34 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                     </div>
                   </div>
 
+                  {/* Phase history timeline */}
+                  {((store.pipelineStatus as any).phaseHistory as Array<{phase: string; timestamp: string}> | undefined)?.length ? (
+                    <div>
+                      <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">History</p>
+                      <div className="relative pl-4 space-y-0">
+                        {((store.pipelineStatus as any).phaseHistory as Array<{phase: string; timestamp: string}>).map((entry, i, arr) => {
+                          const isCurrent = i === arr.length - 1;
+                          return (
+                            <div key={i} className="relative flex items-start gap-2 pb-2">
+                              {i < arr.length - 1 && (
+                                <div className="absolute left-0 top-2.5 bottom-0 w-px bg-slate-700" />
+                              )}
+                              <div className={`absolute left-[-1px] top-1.5 w-2.5 h-2.5 rounded-full border-2 ${isCurrent ? "bg-blue-400 border-blue-400" : "bg-green-500 border-green-500"}`} />
+                              <div className="ml-4">
+                                <span className={`text-xs font-mono ${isCurrent ? "text-blue-300 font-semibold" : "text-slate-400"}`}>
+                                  {entry.phase}
+                                </span>
+                                <span className="text-xs text-slate-600 ml-2">
+                                  {format(new Date(entry.timestamp), "HH:mm:ss")}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+
                   {/* Gate review */}
                   {store.pipelineStatus.activeGate && (
                     <div className="rounded-lg border border-amber-700/60 bg-amber-900/20 overflow-hidden">
@@ -632,25 +685,39 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                   {store.pipelineStatus.board && (
                     <div>
                       <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Modules</p>
-                      <div className="space-y-1">
-                        {store.pipelineStatus.board.modules.slice(0, 5).map((mod) => (
-                          <div
-                            key={mod.moduleId}
-                            className="flex items-center gap-2 text-xs bg-slate-900 px-2 py-1 rounded"
-                          >
-                            {mod.status === "PASSED" ? (
-                              <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
-                            ) : mod.status === "EXECUTING" ? (
-                              <Activity className="w-4 h-4 text-blue-400 flex-shrink-0 animate-spin" />
-                            ) : mod.status === "REJECTED" ? (
-                              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-                            ) : (
-                              <Clock className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                            )}
-                            <span className="text-slate-300 truncate">{mod.moduleId}</span>
-                            <span className="text-slate-500 ml-auto">×{mod.attempts}</span>
-                          </div>
-                        ))}
+                      <div className="space-y-1.5">
+                        {store.pipelineStatus.board.modules.slice(0, 5).map((mod) => {
+                          const planMod = (store.pipelineStatus as any).plan?.engineeringPlan?.modules?.find(
+                            (m: any) => m.moduleId === mod.moduleId
+                          );
+                          return (
+                            <div
+                              key={mod.moduleId}
+                              className="bg-slate-900 rounded px-2 py-1.5 border border-slate-700/50"
+                            >
+                              <div className="flex items-center gap-2 text-xs">
+                                {mod.status === "PASSED" ? (
+                                  <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
+                                ) : mod.status === "EXECUTING" ? (
+                                  <Activity className="w-4 h-4 text-blue-400 flex-shrink-0 animate-spin" />
+                                ) : mod.status === "REJECTED" ? (
+                                  <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                                ) : (
+                                  <Clock className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                                )}
+                                <span className="text-slate-200 font-medium truncate">
+                                  {planMod?.title || mod.moduleId}
+                                </span>
+                                <span className="text-slate-500 ml-auto flex-shrink-0">×{mod.attempts}</span>
+                              </div>
+                              {planMod?.touches?.length > 0 && (
+                                <div className="mt-1 ml-6 text-xs text-slate-500 truncate">
+                                  {(planMod.touches as string[]).slice(0, 2).join(" · ")}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                         {(store.pipelineStatus.board.modules.length || 0) > 5 && (
                           <p className="text-xs text-slate-500 px-2 py-1">
                             +{store.pipelineStatus.board.modules.length - 5} more
@@ -676,6 +743,49 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
                             </div>
                           ))}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Context notes — visible and editable during running phases */}
+                  {["PLANNING_RUNNING", "EXECUTION_RUNNING"].includes(store.pipelineStatus.phase) && (
+                    <div>
+                      <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Context Notes</p>
+                      <div className="bg-slate-900 rounded border border-blue-700/40 p-2 space-y-2">
+                        <p className="text-xs text-slate-500">
+                          Add context, constraints, or corrections the agent should consider.
+                        </p>
+                        <textarea
+                          value={contextNote}
+                          onChange={(e) => setContextNote(e.target.value)}
+                          placeholder="e.g. 'Use React Query v5 hooks syntax' or 'Add dark mode support'…"
+                          rows={3}
+                          className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition resize-none"
+                        />
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={submitContextNote}
+                            disabled={!contextNote.trim() || isSubmittingNote}
+                            className="flex-1 py-1.5 bg-blue-700 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded transition"
+                          >
+                            {isSubmittingNote ? "Saving…" : "Send Note"}
+                          </button>
+                          {noteSubmitMsg && (
+                            <span className="text-xs text-green-400">{noteSubmitMsg}</span>
+                          )}
+                        </div>
+                      </div>
+                      {((store.pipelineStatus as any).contextNotes as Array<{note: string; timestamp: string}> | undefined)?.length ? (
+                        <div className="mt-2 space-y-1">
+                          {((store.pipelineStatus as any).contextNotes as Array<{note: string; timestamp: string}>)
+                            .slice(-3)
+                            .map((cn, i) => (
+                              <div key={i} className="bg-slate-900 rounded px-2 py-1 text-xs border-l-2 border-blue-700/60">
+                                <p className="text-slate-300 break-words">{cn.note}</p>
+                                <p className="text-slate-600 mt-0.5">{format(new Date(cn.timestamp), "HH:mm:ss")}</p>
+                              </div>
+                            ))}
+                        </div>
+                      ) : null}
                     </div>
                   )}
 
