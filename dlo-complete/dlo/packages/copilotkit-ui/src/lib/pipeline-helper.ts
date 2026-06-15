@@ -534,6 +534,33 @@ export async function savePipeline(state: PipelineState): Promise<void> {
   await writeFile(join(dir, `${state.pipelineId}.json`), JSON.stringify(state, null, 2), "utf-8");
 }
 
+export async function writeWorkspaceMarkdown(workspaceDir: string, filename: string, content: string): Promise<void> {
+  try {
+    await mkdir(workspaceDir, { recursive: true });
+    await writeFile(join(workspaceDir, filename), content, "utf-8");
+  } catch (e: any) {
+    console.warn(`[Workspace] Failed to write ${filename}:`, e.message);
+  }
+}
+
+async function writeHandoff(state: PipelineState): Promise<void> {
+  const notes = (state.contextNotes || [])
+    .map((n: any) => `- [${n.timestamp?.slice(0, 19) ?? ""}] ${n.note}`)
+    .join("\n");
+  const modules = (state.board?.modules || [])
+    .map((m: any) => `- **${m.title || m.moduleId}** — ${m.status}  \n  Files: ${(m.files || []).join(", ")}`)
+    .join("\n");
+  const content =
+    `# Handoff — ${state.projectName}\n\n` +
+    `> Completed: ${new Date().toISOString()}\n\n` +
+    `## App URL\n\n${state.appUrl || "Not launched"}\n\n` +
+    `## Workspace\n\n\`${state.workspaceDir}\`\n\n` +
+    `## Modules\n\n${modules || "—"}\n\n` +
+    `## Steering Notes\n\n${notes || "None"}\n\n` +
+    `## Files\n\nSee \`DOMAIN.md\`, \`PLAN.md\`, and \`CONTEXT.md\` in this workspace.\n`;
+  await writeWorkspaceMarkdown(state.workspaceDir, "HANDOFF.md", content);
+}
+
 export async function getPipeline(pipelineId: string): Promise<PipelineState | null> {
   try {
     const content = await readFile(join(getPipelinesDir(), `${pipelineId}.json`), "utf-8");
@@ -629,6 +656,11 @@ Format the output strictly as Markdown. Do not include markdown code block wraps
     };
 
     await savePipeline(state);
+    await writeWorkspaceMarkdown(
+      state.workspaceDir,
+      "DOMAIN.md",
+      `# Domain Document — ${state.projectName}\n\n> Generated: ${new Date().toISOString()}\n\n${markdown}`
+    );
     console.log(`Research phase completed for pipeline ${pipelineId}`);
   } catch (err: any) {
     state.phase = "FAILED";
@@ -710,6 +742,20 @@ export async function runPlanningBackground(pipelineId: string): Promise<void> {
     };
 
     await savePipeline(state);
+
+    const engModules = (state.plan?.engineeringPlan as any)?.modules || [];
+    const moduleList = engModules.map((m: any, i: number) =>
+      `${i + 1}. **${m.title || m.moduleId}** — ${m.description || ""}\n   Files: ${(m.files || []).join(", ")}`
+    ).join("\n");
+    await writeWorkspaceMarkdown(
+      state.workspaceDir,
+      "PLAN.md",
+      `# Tripartite Plan — ${state.projectName}\n\n> Generated: ${new Date().toISOString()}\n\n` +
+      `## CEO Strategy\n\n${state.plan?.ceoPlan || ""}\n\n` +
+      `## System Architecture\n\n${state.plan?.architecturePlan || ""}\n\n` +
+      `## Engineering Plan\n\n${moduleList || JSON.stringify(state.plan?.engineeringPlan, null, 2)}\n`
+    );
+
     console.log(`Planning phase completed for pipeline ${pipelineId}`);
   } catch (err: any) {
     state.phase = "FAILED";
@@ -1114,6 +1160,7 @@ export async function runAppLaunchBackground(
       state.activeGate = null;
       state.lastTransitionAt = new Date().toISOString();
       await savePipeline(state);
+      await writeHandoff(state);
       return;
     }
 
@@ -1176,7 +1223,7 @@ export async function runAppLaunchBackground(
     state.activeGate = null;
     state.lastTransitionAt = new Date().toISOString();
     await savePipeline(state);
-
+    await writeHandoff(state);
     console.log(`[App] Application ${appReady ? "ready" : "launched"} at ${appUrl} for ${pipelineId}`);
   } catch (err: any) {
     // App launch is non-fatal — mark completed with warning
@@ -1188,6 +1235,7 @@ export async function runAppLaunchBackground(
       s.error = `Warning: App launch issue: ${err.message}`;
       s.lastTransitionAt = new Date().toISOString();
       await savePipeline(s);
+      await writeHandoff(s);
     }
   }
 }

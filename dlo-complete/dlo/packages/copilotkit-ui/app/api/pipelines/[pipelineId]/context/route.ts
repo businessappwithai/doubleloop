@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPipeline, savePipeline } from "@/lib/pipeline-helper";
+import { getPipeline, savePipeline, writeWorkspaceMarkdown } from "@/lib/pipeline-helper";
 
 export async function POST(
   req: Request,
@@ -18,6 +18,13 @@ export async function POST(
     if (!state.contextNotes) state.contextNotes = [];
     state.contextNotes.push({ note: note.trim(), timestamp: new Date().toISOString() });
     await savePipeline(state);
+
+    const contextMd = `# Steering Notes — ${state.projectName}\n\n` +
+      state.contextNotes.map((n: any) =>
+        `## [${n.timestamp?.slice(0, 19) ?? ""}]\n\n${n.note}`
+      ).join("\n\n---\n\n") + "\n";
+    await writeWorkspaceMarkdown(state.workspaceDir, "CONTEXT.md", contextMd);
+
     return NextResponse.json({ accepted: true });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

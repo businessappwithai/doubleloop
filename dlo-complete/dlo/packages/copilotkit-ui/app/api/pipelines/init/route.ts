@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { savePipeline, runResearchBackground } from "@/lib/pipeline-helper";
+import { savePipeline, runResearchBackground, writeWorkspaceMarkdown } from "@/lib/pipeline-helper";
 
 export async function POST(request: Request) {
   try {
@@ -19,10 +19,12 @@ export async function POST(request: Request) {
     const pipelineId = uuidv4();
     const now = new Date().toISOString();
 
-    // Each pipeline gets its own isolated workspace directory
+    // Each pipeline gets its own workspace named by project slug + short ID
+    const slug = projectName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const shortId = pipelineId.slice(0, 8);
     const resolvedWorkspaceDir = workspaceDir && workspaceDir.trim()
       ? workspaceDir.trim()
-      : join(process.cwd(), "workspaces", pipelineId);
+      : join(process.cwd(), "workspaces", `${slug}-${shortId}`);
     try { mkdirSync(resolvedWorkspaceDir, { recursive: true }); } catch { /* ignore */ }
 
     const hasManualResearch = typeof researchMarkdown === "string" && researchMarkdown.trim().length > 0;
@@ -56,7 +58,14 @@ export async function POST(request: Request) {
 
     await savePipeline(pipeline as any);
 
-    if (!hasManualResearch) {
+    if (hasManualResearch) {
+      // Write DOMAIN.md immediately for manual-research path
+      await writeWorkspaceMarkdown(
+        resolvedWorkspaceDir,
+        "DOMAIN.md",
+        `# Domain Document — ${projectName}\n\n> Source: User-provided research\n> Created: ${now}\n\n${researchMarkdown}`
+      );
+    } else {
       runResearchBackground(pipelineId).catch((err) => {
         console.error(`Research phase failed for ${pipelineId}:`, err);
       });
