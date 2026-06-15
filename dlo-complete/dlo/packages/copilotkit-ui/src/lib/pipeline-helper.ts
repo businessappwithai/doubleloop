@@ -51,7 +51,13 @@ async function checkRequiredTools(): Promise<ToolStatus> {
 
   try {
     await execFileAsync("codewhale", ["--version"], { timeout: 5_000 });
-    codewhale = true;
+    // Binary present — now check if at least one provider key is configured
+    const cwProviders = [
+      process.env.DEEPSEEK_API_KEY,
+      process.env.OPENAI_API_KEY,
+      process.env.OPENROUTER_API_KEY,
+    ];
+    codewhale = cwProviders.some(Boolean);
   } catch { /* not installed */ }
 
   try {
@@ -60,7 +66,7 @@ async function checkRequiredTools(): Promise<ToolStatus> {
   } catch { /* not installed */ }
 
   const missing: string[] = [];
-  if (!codewhale) missing.push("codewhale (CodeWhale code generation agent)");
+  if (!codewhale) missing.push("codewhale (requires DEEPSEEK_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY)");
   if (!ocr) missing.push("ocr (@alibaba-group/open-code-review)");
 
   return { codewhale, ocr, missing };
@@ -68,12 +74,40 @@ async function checkRequiredTools(): Promise<ToolStatus> {
 
 export async function runToolInstallScript(): Promise<{ success: boolean; log: string }> {
   const scriptPath = join(process.cwd(), "scripts/install-ai-tools.sh");
+  let log = "";
   try {
     const { stdout, stderr } = await execFileAsync("bash", [scriptPath], {
       timeout: 300_000,
       env: { ...process.env, HOME: process.env.HOME || "/tmp" },
     });
-    return { success: true, log: stdout + stderr };
+    log = stdout + stderr;
+
+    // After installing, auto-configure CodeWhale with the first available provider key
+    const deepseekKey = process.env.DEEPSEEK_API_KEY;
+    const openaiKey = process.env.OPENAI_API_KEY;
+    const openrouterKey = process.env.OPENROUTER_API_KEY;
+    const provider = deepseekKey ? "deepseek" : openaiKey ? "openai" : openrouterKey ? "openrouter" : null;
+    const apiKey = deepseekKey || openaiKey || openrouterKey;
+
+    if (provider && apiKey) {
+      try {
+        const { stdout: authOut } = await execFileAsync(
+          "codewhale",
+          ["auth", "set", "--provider", provider, "--api-key", apiKey],
+          { timeout: 15_000, env: process.env }
+        );
+        log += `\n[DLO] Configured CodeWhale provider: ${provider}\n${authOut}`;
+        console.log(`[ToolInstall] Configured CodeWhale with provider: ${provider}`);
+      } catch (e: any) {
+        log += `\n[DLO] CodeWhale provider config failed: ${e.message}`;
+        console.warn(`[ToolInstall] CodeWhale provider config failed:`, e.message);
+      }
+    } else {
+      log += "\n[DLO] No provider API key found in environment (DEEPSEEK_API_KEY / OPENAI_API_KEY / OPENROUTER_API_KEY). Configure one to use CodeWhale, or choose 'Use Claude Haiku' instead.";
+      console.warn("[ToolInstall] No CodeWhale-compatible provider key in environment.");
+    }
+
+    return { success: true, log };
   } catch (err: any) {
     return { success: false, log: err.stdout + err.stderr + err.message };
   }
@@ -130,27 +164,35 @@ Requirements:
 - Include error handling
 - Do not use placeholder or TODO comments — implement fully`;
 
-  // Configure CodeWhale API key if provided
+  // Configure CodeWhale provider — prefer deepseek > openai > openrouter (CW-supported providers)
   const deepseekKey = config?.providers?.executor?.apiKey || process.env.DEEPSEEK_API_KEY;
-  const anthropicKey = config?.providers?.executor?.anthropicApiKey || process.env.ANTHROPIC_API_KEY;
-  const executorModel = config?.providers?.executor?.model;
+  const openaiKey = process.env.OPENAI_API_KEY;
+  const openrouterKey = process.env.OPENROUTER_API_KEY;
+
   if (deepseekKey) {
     try {
       await execFileAsync("codewhale", ["auth", "set", "--provider", "deepseek", "--api-key", deepseekKey], { env, timeout: 15_000 });
-    } catch { /* non-fatal */ }
-  }
-  if (anthropicKey && executorModel) {
+      console.log("[Pi→CodeWhale] Configured deepseek provider");
+    } catch (e: any) { console.warn("[Pi→CodeWhale] deepseek config failed:", e.message); }
+  } else if (openaiKey) {
     try {
-      await execFileAsync("codewhale", ["auth", "set", "--provider", "anthropic", "--api-key", anthropicKey, "--model", executorModel], { env, timeout: 15_000 });
-    } catch { /* non-fatal */ }
+      await execFileAsync("codewhale", ["auth", "set", "--provider", "openai", "--api-key", openaiKey], { env, timeout: 15_000 });
+      console.log("[Pi→CodeWhale] Configured openai provider");
+    } catch (e: any) { console.warn("[Pi→CodeWhale] openai config failed:", e.message); }
+  } else if (openrouterKey) {
+    try {
+      await execFileAsync("codewhale", ["auth", "set", "--provider", "openrouter", "--api-key", openrouterKey], { env, timeout: 15_000 });
+      console.log("[Pi→CodeWhale] Configured openrouter provider");
+    } catch (e: any) { console.warn("[Pi→CodeWhale] openrouter config failed:", e.message); }
   }
 
-  console.log(`[Pi→CodeWhale] Spawning for module ${moduleSpec.moduleId}: ${moduleSpec.title}`);
+  console.log(`[Pi→CodeWhale] Spawning with --auto for module ${moduleSpec.moduleId}: ${moduleSpec.title}`);
 
   await new Promise<void>((resolve, reject) => {
+    // --auto enables non-interactive agent mode with tool use (file read/write/shell)
     const child = spawn(
       "codewhale",
-      ["exec", cwPrompt, "--allowed-tools", "read_file,write_file", "--max-turns", "30"],
+      ["exec", "--auto", cwPrompt],
       { cwd: workspaceDir, env }
     );
     let stderr = "";
@@ -158,9 +200,13 @@ Requirements:
     child.on("error", reject);
     child.on("close", (code: number | null) => {
       if (code !== 0 && code !== null) {
-        console.warn(`[Pi→CodeWhale] Exited ${code}: ${stderr.slice(0, 500)}`);
+        const msg = stderr.slice(0, 800);
+        console.warn(`[Pi→CodeWhale] Exited ${code}: ${msg}`);
+        // Reject so the module is correctly marked FAILED rather than silently PASSED
+        reject(new Error(`CodeWhale exited ${code}: ${msg}`));
+      } else {
+        resolve();
       }
-      resolve();
     });
   });
 }
