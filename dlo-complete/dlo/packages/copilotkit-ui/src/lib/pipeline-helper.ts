@@ -4,15 +4,18 @@ import { spawn } from "node:child_process";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 async function spawnClaude(prompt: string, model: string, workspaceDir?: string): Promise<string> {
+  const cwd = workspaceDir || process.cwd();
+  await mkdir(cwd, { recursive: true });
   return new Promise((resolve, reject) => {
     const child = spawn("claude", ["-p", prompt, "--model", model], {
       env: process.env,
-      cwd: workspaceDir || process.cwd(),
+      cwd,
     });
     let out = "";
     let err = "";
     child.stdout.on("data", (d: Buffer) => { out += d.toString(); });
     child.stderr.on("data", (d: Buffer) => { err += d.toString(); });
+    child.on("error", reject);
     child.on("close", (code: number | null) => {
       if (code === 0) resolve(out.trim());
       else reject(new Error(`claude exited ${code}: ${err.trim() || out.trim()}`));
