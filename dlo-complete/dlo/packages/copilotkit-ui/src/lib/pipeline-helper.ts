@@ -197,7 +197,8 @@ CRITICAL RULES:
         executorModel,
         workspaceDir
       );
-      await writeFile(join(workspaceDir, relPath), code, "utf-8");
+      const strippedCode = code.replace(/^```[\w]*\n?/, "").replace(/\n?```\s*$/, "");
+      await writeFile(join(workspaceDir, relPath), strippedCode, "utf-8");
       console.log(`[Claude→Executor] Generated ${relPath} (${executorModel})`);
     } catch (err) {
       console.warn(`[Claude→Executor] Failed to generate ${relPath}:`, err);
