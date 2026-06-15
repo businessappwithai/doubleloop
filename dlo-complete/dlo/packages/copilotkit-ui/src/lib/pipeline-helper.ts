@@ -770,17 +770,19 @@ export async function runPlanningBackground(pipelineId: string): Promise<void> {
 
     await savePipeline(state);
 
-    const engModules = (state.plan?.engineeringPlan as any)?.modules || [];
-    const moduleList = engModules.map((m: any, i: number) =>
-      `${i + 1}. **${m.title || m.moduleId}** — ${m.description || ""}\n   Files: ${(m.files || []).join(", ")}`
-    ).join("\n");
+    const engPlan = (state.plan?.engineeringPlan as any) || {};
+    const engModules: any[] = engPlan.modules || [];
+    const moduleList = engModules.map((m: any, i: number) => {
+      const files = m.files?.length ? m.files.join(", ") : m.targetFiles?.length ? m.targetFiles.join(", ") : "—";
+      return `### ${i + 1}. ${m.title || m.moduleId}\n\n${m.description || m.prompt?.slice(0, 200) || ""}\n\n**Files:** \`${files}\``;
+    }).join("\n\n");
     await writeWorkspaceMarkdown(
       state.workspaceDir,
       "PLAN.md",
       `# Tripartite Plan — ${state.projectName}\n\n> Generated: ${new Date().toISOString()}\n\n` +
       `## CEO Strategy\n\n${state.plan?.ceoPlan || ""}\n\n` +
       `## System Architecture\n\n${state.plan?.architecturePlan || ""}\n\n` +
-      `## Engineering Plan\n\n${moduleList || JSON.stringify(state.plan?.engineeringPlan, null, 2)}\n`
+      `## Engineering Modules\n\n${moduleList || "_No modules defined_"}\n`
     );
 
     console.log(`Planning phase completed for pipeline ${pipelineId}`);
