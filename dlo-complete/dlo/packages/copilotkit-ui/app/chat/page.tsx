@@ -96,11 +96,11 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
     setIsConnected(true);
   }, [daemonUrl, setClient]);
 
-  // Resume pipeline from ?pipeline=<id> URL param
+  // Resume pipeline from ?pipeline=<id> URL param or localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    const pid = params.get("pipeline");
+    const pid = params.get("pipeline") || localStorage.getItem("dlo-active-pipeline");
     if (pid && !store.activePipelineId) {
       store.loadPipeline(pid as any);
     }
