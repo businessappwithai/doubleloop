@@ -1,176 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="com.example.todoapplication">
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Core permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    
-    <!-- Notification permissions -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    
-    <!-- Reminder and alarm permissions -->
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM_PERMISSION" />
-    <uses-permission android:name="android.permission.SET_ALARM" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    
-    <!-- Device connectivity -->
-    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
-    
-    <!-- Widget permissions -->
-    <uses-permission android:name="android.permission.BIND_APPWIDGET" />
-    
-    <!-- Device features -->
-    <uses-feature
-        android:name="android.hardware.type.watch"
-        android:required="false" />
 
     <application
         android:name=".TodoApplication"
         android:allowBackup="true"
-        android:dataExtractionRules="@xml/data_extraction_rules"
-        android:debuggable="false"
-        android:description="@string/app_description"
-        android:enableOnBackInvokedCallback="true"
-        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:localeConfig="@xml/locales_config"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.TodoApplication"
-        android:usesCleartextTraffic="false"
+        android:theme="@style/Theme.TodoApp"
         tools:targetApi="34">
 
-        <!-- Main activity -->
         <activity
-            android:name=".ui.MainActivity"
+            android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.TodoApplication"
             android:windowSoftInputMode="adjustResize|stateHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="todoapplication" />
-            </intent-filter>
-        </activity>
-
-        <!-- Task detail activity -->
-        <activity
-            android:name=".ui.TaskDetailActivity"
-            android:exported="false"
-            android:theme="@style/Theme.TodoApplication"
-            android:windowSoftInputMode="adjustResize|stateHidden" />
-
-        <!-- Settings activity -->
-        <activity
-            android:name=".ui.SettingsActivity"
-            android:exported="false"
-            android:theme="@style/Theme.TodoApplication"
-            android:parentActivityName=".ui.MainActivity" />
-
-        <!-- Statistics/Dashboard activity -->
-        <activity
-            android:name=".ui.StatsActivity"
-            android:exported="false"
-            android:theme="@style/Theme.TodoApplication"
-            android:parentActivityName=".ui.MainActivity" />
-
-        <!-- Sync service -->
-        <service
-            android:name=".service.SyncService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
-
-        <!-- Notification service -->
-        <service
-            android:name=".service.NotificationService"
-            android:exported="false" />
-
-        <!-- Task reminder broadcast receiver -->
-        <receiver
-            android:name=".receiver.TaskReminderReceiver"
-            android:enabled="true"
-            android:exported="true"
-            android:permission="android.permission.SCHEDULE_EXACT_ALARM">
-            <intent-filter>
-                <action android:name="com.example.todoapplication.TASK_REMINDER" />
-            </intent-filter>
-        </receiver>
-
-        <!-- Boot completion receiver -->
-        <receiver
-            android:name=".receiver.BootCompletionReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
-            </intent-filter>
-        </receiver>
-
-        <!-- Connectivity change receiver -->
-        <receiver
-            android:name=".receiver.ConnectivityReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.net.conn.CONNECTIVITY_CHANGE" />
-            </intent-filter>
-        </receiver>
-
-        <!-- Home widget provider -->
-        <receiver
-            android:name=".widget.TodoWidgetProvider"
-            android:enabled="true"
-            android:exported="true"
-            android:label="@string/widget_name">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/todo_widget_info" />
-        </receiver>
-
-        <!-- Task content provider for data access -->
-        <provider
-            android:name=".provider.TaskContentProvider"
-            android:authorities="com.example.todoapplication.provider"
-            android:exported="false"
-            android:grantUriPermissions="true" />
-
-        <!-- Shortcuts for quick actions -->
-        <meta-data
-            android:name="android.app.shortcuts"
-            android:resource="@xml/shortcuts" />
-
-        <!-- Search suggestions provider -->
-        <provider
-            android:name=".provider.SearchSuggestionProvider"
-            android:authorities="com.example.todoapplication.provider.suggestions"
-            android:exported="false"
-            android:grantUriPermissions="true" />
-
-        <!-- App search provider configuration -->
-        <activity
-            android:name=".ui.SearchableActivity"
-            android:exported="false"
-            android:label="@string/search_hint">
-            <intent-filter>
-                <action android:name="android.intent.action.SEARCH" />
-            </intent-filter>
-            <meta-data
-                android:name="android.app.searchable"
-                android:resource="@xml/searchable" />
         </activity>
 
     </application>

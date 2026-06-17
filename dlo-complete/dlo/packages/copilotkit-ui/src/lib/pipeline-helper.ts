@@ -4,6 +4,7 @@ import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync } from "node:fs";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import type { PipelinePhase } from "@dlo/core";
 
 const execFileAsync = promisify(execFile);
 
@@ -638,10 +639,10 @@ export interface PipelineState {
   objectivesMarkdown: string;
   workspaceDir: string;
   config: any;
-  phase: string;
+  phase: PipelinePhase;
   createdAt: string;
   lastTransitionAt: string;
-  phaseHistory?: Array<{ phase: string; timestamp: string }>;
+  phaseHistory?: Array<{ phase: PipelinePhase; timestamp: string }>;
   contextNotes?: Array<{ note: string; timestamp: string }>;
   domainDocument?: {
     markdown: string;
@@ -694,7 +695,7 @@ export interface PipelineState {
   error?: string;
 }
 
-export function pushPhaseHistory(state: PipelineState, phase: string): void {
+export function pushPhaseHistory(state: PipelineState, phase: PipelinePhase): void {
   if (!state.phaseHistory) state.phaseHistory = [];
   state.phaseHistory.push({ phase, timestamp: new Date().toISOString() });
 }

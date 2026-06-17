@@ -183,14 +183,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "TodoApp"
 
-include(
-    ":app",
-    ":core:ui",
-    ":core:database",
-    ":core:network",
-    ":core:common",
-    ":core:util",
-    ":feature:tasks",
-    ":feature:task-details",
-    ":feature:settings"
-)
+include(":app")

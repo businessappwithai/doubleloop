@@ -8,11 +8,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.todoapplication"
+    namespace = "com.example.todoapp"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.todoapplication"
+        applicationId = "com.example.todoapp"
         minSdk = 24
         targetSdk = 34
         versionCode = 1
