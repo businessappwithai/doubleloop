@@ -5,8 +5,10 @@ import {
   runResearchBackground,
   runPlanningBackground,
   runExecutionBackground,
+  runBuildBackground,
   runDbProvisioningBackground,
   runTestingBackground,
+  runDeployBackground,
   runAppLaunchBackground,
   runToolInstallScript,
   pushPhaseHistory,
@@ -68,25 +70,38 @@ export async function POST(
       if (decision === "APPROVE") {
         await savePipeline(state);
 
-        if (state.phase === "DB_PROVISIONING_RUNNING") {
+        if (state.phase === "BUILD_RUNNING") {
+          void runBuildBackground(state.pipelineId, true);
+        } else if (state.phase === "DB_PROVISIONING_RUNNING") {
           void runDbProvisioningBackground(state.pipelineId, true);
         } else if (state.phase === "TESTING_RUNNING") {
           void runTestingBackground(state.pipelineId, true);
+        } else if (state.phase === "DEPLOY_RUNNING") {
+          void runDeployBackground(state.pipelineId, true);
         } else if (state.phase === "APP_LAUNCH_RUNNING") {
           void runAppLaunchBackground(state.pipelineId, true);
         }
       } else {
         // REJECT — skip this phase and advance
-        if (state.phase === "DB_PROVISIONING_RUNNING") {
+        if (state.phase === "BUILD_RUNNING") {
+          state.phase = "DB_PROVISIONING_RUNNING";
+          pushPhaseHistory(state, "DB_PROVISIONING_RUNNING");
+          await savePipeline(state);
+          void runDbProvisioningBackground(state.pipelineId, false);
+        } else if (state.phase === "DB_PROVISIONING_RUNNING") {
           state.phase = "TESTING_RUNNING";
           pushPhaseHistory(state, "TESTING_RUNNING");
           await savePipeline(state);
           void runTestingBackground(state.pipelineId, false);
         } else if (state.phase === "TESTING_RUNNING") {
-          state.phase = "APP_LAUNCH_RUNNING";
-          pushPhaseHistory(state, "APP_LAUNCH_RUNNING");
+          state.phase = "DEPLOY_RUNNING";
+          pushPhaseHistory(state, "DEPLOY_RUNNING");
           await savePipeline(state);
-          void runAppLaunchBackground(state.pipelineId, false);
+          void runDeployBackground(state.pipelineId, false);
+        } else if (state.phase === "DEPLOY_RUNNING") {
+          state.phase = "COMPLETED";
+          pushPhaseHistory(state, "COMPLETED");
+          await savePipeline(state);
         } else if (state.phase === "APP_LAUNCH_RUNNING") {
           state.phase = "COMPLETED";
           pushPhaseHistory(state, "COMPLETED");

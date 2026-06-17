@@ -206,6 +206,91 @@ Be conversational and help the user understand the implications of each decision
 }
 
 /**
+ * Monitor and control the build, test, and deploy phases.
+ */
+export function useBuildDeployAgent() {
+  const store = useDloStore();
+
+  return {
+    name: "build_test_deploy",
+    description: "Build, test, and deploy the generated application — monitor progress and resolve gates",
+
+    instructions: `You are the build, test, and deploy agent. Your job is to:
+1. Monitor and report the pipeline's build, test, and deployment status
+2. Explain each stage clearly:
+   - BUILD_RUNNING: Compiling and bundling the application (npm run build or ./gradlew assembleDebug)
+   - TESTING_RUNNING: Running the automated test suite
+   - DEPLOY_RUNNING: Deploying the app (Android APK via ADB, or web app served at localhost)
+3. When a TERMINAL_PERMISSION gate is open, explain exactly what commands will run and help the user decide
+4. Report artifact locations (APK path, dist/ directory) and deployment URLs when available
+5. If tests failed, summarize the failures and suggest next steps
+
+Always use get_build_deploy_status first to get current state before advising the user.`,
+
+    tools: [
+      {
+        name: "get_build_deploy_status",
+        description: "Get current build, test, and deployment status of the active pipeline",
+        inputSchema: { type: "object", properties: {} },
+        execute: async () => {
+          const pipelineId = store.activePipelineId;
+          const status = store.pipelineStatus;
+
+          if (!pipelineId || !status) {
+            return { error: "No active pipeline. Initialize one first." };
+          }
+
+          return {
+            phase: status.phase,
+            buildResults: (status as any).buildResults ?? null,
+            testResults: status.testResults ?? null,
+            deployResults: (status as any).deployResults ?? null,
+            appUrl: status.appUrl ?? null,
+            activeGate: status.activeGate
+              ? {
+                  gateId: status.activeGate.gateId,
+                  kind: status.activeGate.kind,
+                  description: status.activeGate.exhibits?.[0]?.slice(0, 300),
+                }
+              : null,
+          };
+        },
+      },
+      {
+        name: "approve_build_deploy_gate",
+        description: "Approve or reject the current build/test/deploy permission gate",
+        inputSchema: {
+          type: "object",
+          properties: {
+            decision: {
+              type: "string",
+              enum: ["APPROVE", "REJECT"],
+              description: "APPROVE to execute the phase, REJECT to skip it and move on",
+            },
+          },
+          required: ["decision"],
+        },
+        execute: async (input: any) => {
+          const status = store.pipelineStatus;
+          if (!status?.activeGate) {
+            return { error: "No active gate to resolve" };
+          }
+          try {
+            await store.resolveGate(status.activeGate.gateId, input.decision as "APPROVE" | "REJECT", {});
+            return {
+              success: true,
+              message: `Gate ${input.decision === "APPROVE" ? "approved — phase running" : "rejected — skipping to next phase"}.`,
+            };
+          } catch (e) {
+            return { error: e instanceof Error ? e.message : String(e) };
+          }
+        },
+      },
+    ],
+  };
+}
+
+/**
  * View artifacts and documentation.
  */
 export function useArtifactViewerAgent() {

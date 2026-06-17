@@ -501,11 +501,17 @@ createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictM
 }
 
 async function detectDatabaseNeeded(workspaceDir: string, domainDocument?: string): Promise<boolean> {
-  const dbKeywords = /\b(?:postgres|postgresql|mysql|sqlite|mongodb|redis|database|sql|pg|prisma|typeorm|sequelize|drizzle|mongoose)\b/i;
+  const dbKeywords = /\b(?:postgres|postgresql|mysql|mongodb|redis|pg|prisma|typeorm|sequelize|drizzle|mongoose)\b/i;
   const dbImports = /from ['"](?:pg|mysql|mysql2|sqlite3|mongoose|prisma|@prisma\/client|typeorm|sequelize|drizzle-orm|knex|better-sqlite3)/;
   const dbEnvVars = /process\.env\.(?:DATABASE_URL|DB_URL|POSTGRES_URL|MYSQL_URL)/;
 
-  // Check domain document first — most reliable signal
+  // Android projects use Room/SQLite on-device — no external DB container needed.
+  // Detect by presence of Android build files before any keyword scan.
+  const androidSignals = ["build.gradle.kts", "build.gradle", "AndroidManifest.xml", "gradle.properties"];
+  const isAndroid = androidSignals.some((f) => existsSync(join(workspaceDir, f)));
+  if (isAndroid) return false;
+
+  // Check domain document first — most reliable signal (web/server-side only)
   if (domainDocument && dbKeywords.test(domainDocument)) return true;
 
   try {
@@ -568,6 +574,14 @@ async function runMigrations(workspaceDir: string, dbUrl: string, containerId: s
 // ─── Test / launch detection helpers ─────────────────────────────────────────
 
 async function detectTestCommand(workspaceDir: string): Promise<{ cmd: string; args: string[] } | null> {
+  // Android: run Gradle unit tests
+  if (existsSync(join(workspaceDir, "gradlew"))) {
+    return { cmd: "./gradlew", args: ["testDebugUnitTest", "--continue"] };
+  }
+  if (existsSync(join(workspaceDir, "build.gradle.kts")) || existsSync(join(workspaceDir, "build.gradle"))) {
+    return { cmd: "gradle", args: ["testDebugUnitTest", "--continue"] };
+  }
+  // Web: check package.json
   try {
     const pkg = JSON.parse(await readFile(join(workspaceDir, "package.json"), "utf-8"));
     const noOpTest = /^echo.*no test/i;
@@ -585,10 +599,33 @@ async function detectTestCommand(workspaceDir: string): Promise<{ cmd: string; a
 }
 
 async function detectLaunchCommand(workspaceDir: string): Promise<{ cmd: string; args: string[]; port: number } | null> {
+  // Android apps are installed via ADB, not served over HTTP — no launch command.
+  if (existsSync(join(workspaceDir, "build.gradle.kts")) || existsSync(join(workspaceDir, "build.gradle"))) {
+    return null;
+  }
+  // Web: check package.json
   try {
     const pkg = JSON.parse(await readFile(join(workspaceDir, "package.json"), "utf-8"));
     if (pkg.scripts?.dev) return { cmd: "npm", args: ["run", "dev"], port: 3001 };
     if (pkg.scripts?.start) return { cmd: "npm", args: ["start"], port: 3001 };
+  } catch { /* no package.json */ }
+  return null;
+}
+
+async function detectBuildCommand(workspaceDir: string): Promise<{ cmd: string; args: string[]; outputDir: string } | null> {
+  // Android: Gradle assembleDebug → produces APK
+  if (existsSync(join(workspaceDir, "gradlew"))) {
+    return { cmd: "./gradlew", args: ["assembleDebug", "--continue"], outputDir: "app/build/outputs/apk/debug" };
+  }
+  if (existsSync(join(workspaceDir, "build.gradle.kts")) || existsSync(join(workspaceDir, "build.gradle"))) {
+    return { cmd: "gradle", args: ["assembleDebug", "--continue"], outputDir: "app/build/outputs/apk/debug" };
+  }
+  // Web: check package.json for a build script
+  try {
+    const pkg = JSON.parse(await readFile(join(workspaceDir, "package.json"), "utf-8"));
+    if (pkg.scripts?.build) {
+      return { cmd: "npm", args: ["run", "build"], outputDir: "dist" };
+    }
   } catch { /* no package.json */ }
   return null;
 }
@@ -633,11 +670,23 @@ export interface PipelineState {
     /** Context for TERMINAL_PERMISSION gates to know what runs after approval */
     context?: Record<string, unknown>;
   } | null;
+  buildResults?: {
+    passed: boolean;
+    output: string;
+    durationMs: number;
+    artifacts?: string[];
+  };
   testResults?: {
     passed: boolean;
     output: string;
     durationMs: number;
     supervisorReasoning?: string;
+  };
+  deployResults?: {
+    deployed: boolean;
+    output: string;
+    deployUrl?: string;
+    artifactPath?: string;
   };
   appUrl?: string;
   dbConnectionString?: string;
@@ -1133,14 +1182,125 @@ Apply the fixes and ensure the code is correct.`;
   }
 
   if (finalState && finalState.phase === "EXECUTION_RUNNING") {
-    finalState.phase = "DB_PROVISIONING_RUNNING";
-    pushPhaseHistory(finalState, "DB_PROVISIONING_RUNNING");
+    finalState.phase = "BUILD_RUNNING";
+    pushPhaseHistory(finalState, "BUILD_RUNNING");
     finalState.lastTransitionAt = new Date().toISOString();
     await savePipeline(finalState);
-    console.log(`[Pipeline] Execution complete. Starting DB provisioning for ${pipelineId}`);
+    console.log(`[Pipeline] Execution complete. Starting build phase for ${pipelineId}`);
   }
 
-  void runDbProvisioningBackground(pipelineId, false);
+  void runBuildBackground(pipelineId, false);
+}
+
+// ─── Build phase ─────────────────────────────────────────────────────────────
+
+export async function runBuildBackground(pipelineId: string, hasPermission: boolean): Promise<void> {
+  const state = await getPipeline(pipelineId);
+  if (!state) return;
+
+  try {
+    const buildCmd = await detectBuildCommand(state.workspaceDir);
+
+    if (!buildCmd) {
+      // No build command detected — skip to DB provisioning
+      state.phase = "DB_PROVISIONING_RUNNING";
+      pushPhaseHistory(state, "DB_PROVISIONING_RUNNING");
+      state.activeGate = null;
+      state.lastTransitionAt = new Date().toISOString();
+      await savePipeline(state);
+      console.log(`[Build] No build command for ${pipelineId}, skipping to DB provisioning`);
+      void runDbProvisioningBackground(pipelineId, false);
+      return;
+    }
+
+    const buildCommands = [
+      `cd ${state.workspaceDir}`,
+      ...(buildCmd.cmd === "npm" ? ["npm install"] : []),
+      `${buildCmd.cmd} ${buildCmd.args.join(" ")}`,
+      `# Artifacts will be in: ${buildCmd.outputDir}`,
+    ];
+
+    if (!hasPermission) {
+      state.activeGate = {
+        gateId: `gate-${crypto.randomUUID()}`,
+        kind: "TERMINAL_PERMISSION",
+        exhibits: [
+          "Build Application",
+          `Permission needed to build the generated application:\n\n${buildCommands.join("\n")}`,
+          "Approve to build the application, or Reject to skip build and proceed to testing.",
+        ],
+        context: { nextAction: "build-app" },
+      };
+      state.lastTransitionAt = new Date().toISOString();
+      await savePipeline(state);
+      console.log(`[Build] Waiting for permission to build ${pipelineId}`);
+      return;
+    }
+
+    // Permission granted — run build
+    const startTime = Date.now();
+    let buildOutput = "";
+    let buildPassed = false;
+
+    // Install deps first for npm builds
+    if (buildCmd.cmd === "npm" || buildCmd.cmd === "npx") {
+      try {
+        const { stdout, stderr } = await execFileAsync("npm", ["install", "--prefer-offline", "--no-audit", "--no-fund"], {
+          cwd: state.workspaceDir,
+          timeout: 300_000,
+          env: { ...process.env, NODE_ENV: "production" },
+        });
+        buildOutput += stdout + stderr;
+      } catch (e: any) {
+        buildOutput += (e.stdout || "") + (e.stderr || "");
+        console.warn("[Build] npm install warning:", e.message?.slice(0, 200));
+      }
+    }
+
+    console.log(`[Build] Running: ${buildCmd.cmd} ${buildCmd.args.join(" ")} in ${state.workspaceDir}`);
+    try {
+      const { stdout, stderr } = await execFileAsync(buildCmd.cmd, buildCmd.args, {
+        cwd: state.workspaceDir,
+        timeout: 600_000,
+        env: { ...process.env, NODE_ENV: "production", CI: "true" },
+      });
+      buildOutput += stdout + stderr;
+      buildPassed = true;
+    } catch (err: any) {
+      buildOutput += (err.stdout || "") + (err.stderr || "");
+      buildPassed = false;
+      console.warn(`[Build] Build failed (continuing):`, err.message?.slice(0, 200));
+    }
+
+    // Collect produced artifacts
+    const artifacts: string[] = [];
+    const artifactDir = join(state.workspaceDir, buildCmd.outputDir);
+    if (existsSync(artifactDir)) {
+      const artifactFiles = await readdir(artifactDir).catch(() => []);
+      artifacts.push(...artifactFiles.map((f) => join(buildCmd.outputDir, f)));
+    }
+
+    const fresh = await getPipeline(pipelineId);
+    if (!fresh) return;
+    fresh.buildResults = { passed: buildPassed, output: buildOutput.slice(0, 5000), durationMs: Date.now() - startTime, artifacts };
+    fresh.phase = "DB_PROVISIONING_RUNNING";
+    pushPhaseHistory(fresh, "DB_PROVISIONING_RUNNING");
+    fresh.activeGate = null;
+    fresh.lastTransitionAt = new Date().toISOString();
+    await savePipeline(fresh);
+
+    console.log(`[Build] Build ${buildPassed ? "passed" : "failed"} for ${pipelineId}, artifacts: [${artifacts.join(", ")}]`);
+    void runDbProvisioningBackground(pipelineId, false);
+  } catch (err: any) {
+    const s = await getPipeline(pipelineId);
+    if (s) {
+      s.phase = "FAILED";
+      pushPhaseHistory(s, "FAILED");
+      s.error = `Build phase failed: ${err.message}`;
+      s.lastTransitionAt = new Date().toISOString();
+      await savePipeline(s);
+    }
+  }
 }
 
 // ─── DB Provisioning phase ────────────────────────────────────────────────────
@@ -1270,13 +1430,13 @@ export async function runTestingBackground(
     const testCmd = await detectTestCommand(state.workspaceDir);
 
     if (!testCmd) {
-      console.log(`[Test] No test framework detected for ${pipelineId}, skipping to app launch`);
-      state.phase = "APP_LAUNCH_RUNNING";
-      pushPhaseHistory(state, "APP_LAUNCH_RUNNING");
+      console.log(`[Test] No test framework detected for ${pipelineId}, skipping to deploy`);
+      state.phase = "DEPLOY_RUNNING";
+      pushPhaseHistory(state, "DEPLOY_RUNNING");
       state.activeGate = null;
       state.lastTransitionAt = new Date().toISOString();
       await savePipeline(state);
-      void runAppLaunchBackground(pipelineId, false);
+      void runDeployBackground(pipelineId, false);
       return;
     }
 
@@ -1348,14 +1508,14 @@ export async function runTestingBackground(
       durationMs,
       supervisorReasoning: supervisorResult.reasoning,
     };
-    state.phase = "APP_LAUNCH_RUNNING";
-    pushPhaseHistory(state, "APP_LAUNCH_RUNNING");
+    state.phase = "DEPLOY_RUNNING";
+    pushPhaseHistory(state, "DEPLOY_RUNNING");
     state.activeGate = null;
     state.lastTransitionAt = new Date().toISOString();
     await savePipeline(state);
 
     console.log(`[Test] Tests ${finalPassed ? "passed" : "failed"} for ${pipelineId} (${durationMs}ms)`);
-    void runAppLaunchBackground(pipelineId, false);
+    void runDeployBackground(pipelineId, false);
   } catch (err: any) {
     const s = await getPipeline(pipelineId);
     if (s) {
@@ -1368,20 +1528,76 @@ export async function runTestingBackground(
   }
 }
 
-// ─── App Launch phase ─────────────────────────────────────────────────────────
+// ─── Deploy phase ─────────────────────────────────────────────────────────────
 
-export async function runAppLaunchBackground(
-  pipelineId: string,
-  hasPermission: boolean
-): Promise<void> {
+export async function runDeployBackground(pipelineId: string, hasPermission: boolean): Promise<void> {
   let state = await getPipeline(pipelineId);
   if (!state) return;
 
   try {
+    const isAndroid =
+      existsSync(join(state.workspaceDir, "build.gradle.kts")) ||
+      existsSync(join(state.workspaceDir, "build.gradle")) ||
+      existsSync(join(state.workspaceDir, "AndroidManifest.xml"));
+
+    if (isAndroid) {
+      const apkPath = join(state.workspaceDir, "app/build/outputs/apk/debug/app-debug.apk");
+      const apkExists = existsSync(apkPath);
+
+      const deployCommands = apkExists
+        ? [`adb install -r ${apkPath}`, `# Ensure a device is connected: adb devices`]
+        : [`# No APK found at: ${apkPath}`, `# Ensure the Build phase completed successfully.`];
+
+      if (!hasPermission) {
+        state.activeGate = {
+          gateId: `gate-${crypto.randomUUID()}`,
+          kind: "TERMINAL_PERMISSION",
+          exhibits: [
+            "Deploy Android Application",
+            apkExists
+              ? `Deploy APK to a connected Android device via ADB:\n\n${deployCommands.join("\n")}`
+              : `No APK artifact found. Build phase must complete first.\n\nExpected: app/build/outputs/apk/debug/app-debug.apk`,
+            "Approve to install APK on connected device, or Reject to complete without deploying.",
+          ],
+          context: { nextAction: "deploy-android", apkPath: apkExists ? apkPath : null },
+        };
+        state.lastTransitionAt = new Date().toISOString();
+        await savePipeline(state);
+        console.log(`[Deploy] Waiting for permission to deploy Android app for ${pipelineId}`);
+        return;
+      }
+
+      // Permission granted — install via ADB
+      let deployOutput = "";
+      let deployed = false;
+      if (apkExists) {
+        try {
+          const { stdout, stderr } = await execFileAsync("adb", ["install", "-r", apkPath], { timeout: 120_000 });
+          deployOutput = stdout + stderr;
+          deployed = deployOutput.toLowerCase().includes("success");
+          console.log(`[Deploy] ADB install: ${deployed ? "success" : "failed"}`);
+        } catch (e: any) {
+          deployOutput = (e.stdout || "") + (e.stderr || "") + e.message;
+          console.warn("[Deploy] ADB install failed:", e.message?.slice(0, 200));
+        }
+      }
+
+      state = (await getPipeline(pipelineId))!;
+      state.deployResults = { deployed, output: deployOutput.slice(0, 2000), artifactPath: apkExists ? apkPath : undefined };
+      state.phase = "COMPLETED";
+      pushPhaseHistory(state, "COMPLETED");
+      state.activeGate = null;
+      state.lastTransitionAt = new Date().toISOString();
+      await savePipeline(state);
+      await writeHandoff(state);
+      console.log(`[Deploy] Android ${deployed ? "deployed via ADB" : "build complete (no device connected)"} for ${pipelineId}`);
+      return;
+    }
+
+    // Web deployment: serve production build (dist/) or fall back to dev server
     const launchCmd = await detectLaunchCommand(state.workspaceDir);
 
     if (!launchCmd) {
-      console.log(`[App] No launch command detected for ${pipelineId}, marking as completed`);
       state.phase = "COMPLETED";
       pushPhaseHistory(state, "COMPLETED");
       state.activeGate = null;
@@ -1391,91 +1607,101 @@ export async function runAppLaunchBackground(
       return;
     }
 
-    const launchCommands = [
-      `cd ${state.workspaceDir}`,
-      `${launchCmd.cmd} ${launchCmd.args.join(" ")}`,
-      `# App will be available at http://localhost:${launchCmd.port}`,
-    ];
+    const distDir = join(state.workspaceDir, "dist");
+    const hasProdBuild = existsSync(distDir);
+    const port = launchCmd.port;
+    const appUrl = `http://localhost:${port}`;
+
+    const deployCommands = hasProdBuild
+      ? [`cd ${state.workspaceDir}`, `npx serve -s dist -p ${port}`, `# Production app → ${appUrl}`]
+      : [`cd ${state.workspaceDir}`, `${launchCmd.cmd} ${launchCmd.args.join(" ")}`, `# Dev server → ${appUrl}`];
 
     if (!hasPermission) {
       state.activeGate = {
         gateId: `gate-${crypto.randomUUID()}`,
         kind: "TERMINAL_PERMISSION",
         exhibits: [
-          "Launch Application",
-          `Permission needed to start the generated application:\n\n${launchCommands.join("\n")}\n\nThe app will run at http://localhost:${launchCmd.port}`,
-          "Approve to launch the application locally, or Reject to complete without launching.",
+          hasProdBuild ? "Deploy Production Build" : "Launch Application",
+          `Permission needed to ${hasProdBuild ? "serve the production build" : "start the dev server"}:\n\n${deployCommands.join("\n")}`,
+          "Approve to deploy the application, or Reject to complete without deploying.",
         ],
-        context: { nextAction: "launch-app" },
+        context: { nextAction: "deploy-web", useProductionBuild: hasProdBuild },
       };
       state.lastTransitionAt = new Date().toISOString();
       await savePipeline(state);
-      console.log(`[App] Waiting for user permission to launch app for ${pipelineId}`);
+      console.log(`[Deploy] Waiting for permission to deploy web app for ${pipelineId}`);
       return;
     }
 
-    // Permission granted — install deps then launch
-    console.log(`[App] Running npm install in ${state.workspaceDir}`);
-    try {
-      await execFileAsync("npm", ["install", "--prefer-offline", "--no-audit", "--no-fund"], {
+    // Permission granted
+    if (hasProdBuild) {
+      const child = spawn("npx", ["serve", "-s", "dist", "-p", String(port)], {
         cwd: state.workspaceDir,
-        timeout: 120_000,
-        env: { ...process.env, NODE_ENV: "development" },
+        env: process.env,
+        detached: true,
+        stdio: "ignore",
       });
-    } catch (e: any) {
-      console.warn("[App] npm install warning:", e.message?.slice(0, 200));
+      child.unref();
+    } else {
+      try {
+        await execFileAsync("npm", ["install", "--prefer-offline", "--no-audit", "--no-fund"], {
+          cwd: state.workspaceDir,
+          timeout: 120_000,
+          env: { ...process.env, NODE_ENV: "development" },
+        });
+      } catch (e: any) {
+        console.warn("[Deploy] npm install warning:", e.message?.slice(0, 200));
+      }
+      const child = spawn(launchCmd.cmd, launchCmd.args, {
+        cwd: state.workspaceDir,
+        env: { ...process.env, DATABASE_URL: state.dbConnectionString || "", PORT: String(port) },
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
     }
 
-    console.log(`[App] Launching: ${launchCmd.cmd} ${launchCmd.args.join(" ")} in ${state.workspaceDir}`);
-
-    const child = spawn(launchCmd.cmd, launchCmd.args, {
-      cwd: state.workspaceDir,
-      env: {
-        ...process.env,
-        DATABASE_URL: state.dbConnectionString || "",
-        PORT: String(launchCmd.port),
-      },
-      detached: true,
-      stdio: "ignore",
-    });
-    child.unref();
-
     // Health check
-    const appUrl = `http://localhost:${launchCmd.port}`;
     let appReady = false;
     for (let i = 0; i < 30; i++) {
       await new Promise((r) => setTimeout(r, 2000));
       try {
         const res = await fetch(appUrl, { signal: AbortSignal.timeout(3000) });
-        if (res.status < 500) {
-          appReady = true;
-          break;
-        }
+        if (res.status < 500) { appReady = true; break; }
       } catch { /* not ready yet */ }
     }
 
     state = (await getPipeline(pipelineId))!;
-    state.appUrl = appReady ? appUrl : `${appUrl} (starting up — check in a few seconds)`;
+    state.appUrl = appReady ? appUrl : `${appUrl} (starting up)`;
+    state.deployResults = { deployed: appReady, output: "", deployUrl: appReady ? appUrl : undefined };
     state.phase = "COMPLETED";
     pushPhaseHistory(state, "COMPLETED");
     state.activeGate = null;
     state.lastTransitionAt = new Date().toISOString();
     await savePipeline(state);
     await writeHandoff(state);
-    console.log(`[App] Application ${appReady ? "ready" : "launched"} at ${appUrl} for ${pipelineId}`);
+    console.log(`[Deploy] Web app ${appReady ? "ready" : "launched"} at ${appUrl} for ${pipelineId}`);
   } catch (err: any) {
-    // App launch is non-fatal — mark completed with warning
     const s = await getPipeline(pipelineId);
     if (s) {
       s.phase = "COMPLETED";
       pushPhaseHistory(s, "COMPLETED");
       s.activeGate = null;
-      s.error = `Warning: App launch issue: ${err.message}`;
+      s.error = `Warning: Deploy issue: ${err.message}`;
       s.lastTransitionAt = new Date().toISOString();
       await savePipeline(s);
       await writeHandoff(s);
     }
   }
+}
+
+// ─── App Launch phase (backward-compat alias for runDeployBackground) ─────────
+
+export async function runAppLaunchBackground(
+  pipelineId: string,
+  hasPermission: boolean
+): Promise<void> {
+  return runDeployBackground(pipelineId, hasPermission);
 }
 
 // ─── Planning prompt ──────────────────────────────────────────────────────────
