@@ -243,14 +243,14 @@ Always use get_build_deploy_status first to get current state before advising th
           return {
             phase: status.phase,
             buildResults: (status as any).buildResults ?? null,
-            testResults: status.testResults ?? null,
+            testResults: (status as any).testResults ?? null,
             deployResults: (status as any).deployResults ?? null,
-            appUrl: status.appUrl ?? null,
+            appUrl: (status as any).appUrl ?? null,
             activeGate: status.activeGate
               ? {
                   gateId: status.activeGate.gateId,
                   kind: status.activeGate.kind,
-                  description: status.activeGate.exhibits?.[0]?.slice(0, 300),
+                  description: (status.activeGate.exhibits?.[0] as string | undefined)?.slice(0, 300),
                 }
               : null,
           };

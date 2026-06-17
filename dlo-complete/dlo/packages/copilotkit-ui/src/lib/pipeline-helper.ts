@@ -1583,7 +1583,7 @@ export async function runDeployBackground(pipelineId: string, hasPermission: boo
       }
 
       state = (await getPipeline(pipelineId))!;
-      state.deployResults = { deployed, output: deployOutput.slice(0, 2000), artifactPath: apkExists ? apkPath : undefined };
+      state.deployResults = { deployed, output: deployOutput.slice(0, 2000), ...(apkExists ? { artifactPath: apkPath } : {}) };
       state.phase = "COMPLETED";
       pushPhaseHistory(state, "COMPLETED");
       state.activeGate = null;
@@ -1673,7 +1673,7 @@ export async function runDeployBackground(pipelineId: string, hasPermission: boo
 
     state = (await getPipeline(pipelineId))!;
     state.appUrl = appReady ? appUrl : `${appUrl} (starting up)`;
-    state.deployResults = { deployed: appReady, output: "", deployUrl: appReady ? appUrl : undefined };
+    state.deployResults = { deployed: appReady, output: "", ...(appReady ? { deployUrl: appUrl } : {}) };
     state.phase = "COMPLETED";
     pushPhaseHistory(state, "COMPLETED");
     state.activeGate = null;
