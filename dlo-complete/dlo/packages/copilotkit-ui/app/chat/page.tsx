@@ -16,8 +16,150 @@ import "@copilotkit/react-ui/styles.css";
 import { useDloStore } from "@/lib/store";
 import { createDloClient } from "@/lib/dlo-client";
 import { format } from "date-fns";
-import { Activity, AlertCircle, CheckCircle, Clock, Zap, Settings, X, Code2, Database, FlaskConical, Rocket, ExternalLink, ShieldCheck, RefreshCw } from "lucide-react";
+import { Activity, AlertCircle, CheckCircle, Clock, Zap, Settings, X, Code2, Database, FlaskConical, Rocket, ExternalLink, ShieldCheck, RefreshCw, GitBranch } from "lucide-react";
 import { WorkspaceViewer } from "@/components/WorkspaceViewer";
+
+/**
+ * Registers CopilotKit actions/readables. Only mounted when a Gemini key is present
+ * so the runtime is never called without credentials.
+ */
+function CopilotActions({
+  config,
+  store,
+  setPendingPipelineParams,
+  setManualProjectName,
+  setManualObjectives,
+  setManualResearchMode,
+}: {
+  config: any;
+  store: any;
+  setPendingPipelineParams: (p: any) => void;
+  setManualProjectName: (s: string) => void;
+  setManualObjectives: (s: string) => void;
+  setManualResearchMode: (b: boolean) => void;
+}) {
+  useCopilotAction({
+    name: "initialize_pipeline",
+    description: "Initialize a new DLO pipeline with the given configuration",
+    parameters: [
+      { name: "projectName", type: "string", description: "Name of the project", required: true },
+      { name: "objectivesMarkdown", type: "string", description: "Project objectives as markdown", required: true },
+      { name: "workspaceDir", type: "string", description: "Workspace directory path", required: true },
+    ],
+    handler: async (input: any) => {
+      let activeConfig = { ...config };
+      if (typeof window !== "undefined") {
+        try {
+          const stored = localStorage.getItem("dlo-config");
+          if (stored) activeConfig = JSON.parse(stored);
+        } catch (err) {
+          console.error("Failed to parse stored config:", err);
+        }
+      }
+      if (!activeConfig.providers?.research?.apiKey) {
+        setPendingPipelineParams({
+          projectName: input.projectName,
+          objectivesMarkdown: input.objectivesMarkdown,
+          workspaceDir: input.workspaceDir,
+        });
+        setManualProjectName(input.projectName || "");
+        setManualObjectives(input.objectivesMarkdown || "");
+        setManualResearchMode(true);
+        return "Research agent (Gemini Deep Research) is not configured. Paste your research and requirements in the panel on the right, then click 'Start Pipeline'.";
+      }
+      await store.initPipeline({
+        projectName: input.projectName,
+        objectivesMarkdown: input.objectivesMarkdown,
+        workspaceDir: input.workspaceDir,
+        config: activeConfig,
+      });
+      return `Pipeline initialized! Proceeding with Gemini Deep Research phase.`;
+    },
+  });
+
+  useCopilotAction({
+    name: "get_pipeline_status",
+    description: "Get the current status of the active pipeline",
+    parameters: [],
+    handler: async () => {
+      const client = store.client;
+      const pipelineId = store.activePipelineId;
+      if (!client || !pipelineId) {
+        return { error: "No active pipeline. Initialize one first." };
+      }
+      return client.getPipelineStatus(pipelineId);
+    },
+  });
+
+  useCopilotAction({
+    name: "resolve_gate",
+    description: "Resolve an open HITL gate with a decision",
+    parameters: [
+      { name: "decision", type: "string", description: "APPROVE, STEER, or REJECT", required: true },
+      { name: "instructions", type: "string", description: "For STEER: detailed instructions for revision", required: false },
+      { name: "reason", type: "string", description: "For REJECT: reason for rejection", required: false },
+      { name: "note", type: "string", description: "Optional note", required: false },
+    ],
+    handler: async (input: any) => {
+      const status = store.pipelineStatus;
+      if (!status?.activeGate) {
+        return { error: "No active gate to resolve" };
+      }
+      await store.resolveGate(status.activeGate.gateId, input.decision, {
+        instructions: input.instructions,
+        reason: input.reason,
+        note: input.note,
+      });
+      return `Gate resolved with decision: ${input.decision}`;
+    },
+  });
+
+  useCopilotAction({
+    name: "get_domain_document",
+    description: "Get the domain research document",
+    parameters: [],
+    handler: async () => {
+      const status = store.pipelineStatus;
+      if (!status?.domainDocument) {
+        return { error: "Domain document not yet available" };
+      }
+      return {
+        markdown: status.domainDocument.markdown,
+        citations: status.domainDocument.citations,
+      };
+    },
+  });
+
+  useCopilotAction({
+    name: "get_plan",
+    description: "Get the strategic plan (CEO, Architecture, or Engineering)",
+    parameters: [
+      { name: "kind", type: "string", description: "ceo, architecture, or engineering", required: true },
+    ],
+    handler: async (input: any) => {
+      const status = store.pipelineStatus;
+      if (!status?.plan) {
+        return { error: "Plan not yet available" };
+      }
+      const key = `${input.kind}Plan` as "ceoPlan" | "architecturePlan" | "engineeringPlan";
+      return { plan: (status.plan as any)[key] };
+    },
+  });
+
+  useCopilotReadable({
+    description: "Current DLO pipeline status",
+    value: store.pipelineStatus
+      ? {
+          phase: store.pipelineStatus.phase,
+          board: store.pipelineStatus.board,
+          activeGate: store.pipelineStatus.activeGate,
+          budget: store.pipelineStatus.budget,
+        }
+      : { phase: "INIT", board: null, activeGate: null, budget: null },
+  });
+
+  return null;
+}
 
 /**
  * Inner component that uses the DLO store and CopilotKit hooks.
@@ -139,133 +281,15 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
     }
   };
 
-  // 1. Initialize Pipeline Action
-  useCopilotAction({
-    name: "initialize_pipeline",
-    description: "Initialize a new DLO pipeline with the given configuration",
-    parameters: [
-      { name: "projectName", type: "string", description: "Name of the project", required: true },
-      { name: "objectivesMarkdown", type: "string", description: "Project objectives as markdown", required: true },
-      { name: "workspaceDir", type: "string", description: "Workspace directory path", required: true },
-    ],
-    handler: async (input: any) => {
-      let activeConfig = { ...config };
-      if (typeof window !== "undefined") {
-        try {
-          const stored = localStorage.getItem("dlo-config");
-          if (stored) activeConfig = JSON.parse(stored);
-        } catch (err) {
-          console.error("Failed to parse stored config:", err);
-        }
-      }
-      if (!activeConfig.providers?.research?.apiKey) {
-        setPendingPipelineParams({
-          projectName: input.projectName,
-          objectivesMarkdown: input.objectivesMarkdown,
-          workspaceDir: input.workspaceDir,
-        });
-        setManualProjectName(input.projectName || "");
-        setManualObjectives(input.objectivesMarkdown || "");
-        setManualResearchMode(true);
-        return "Research agent (Gemini Deep Research) is not configured. Paste your research and requirements in the panel on the right, then click 'Start Pipeline'.";
-      }
-      await store.initPipeline({
-        projectName: input.projectName,
-        objectivesMarkdown: input.objectivesMarkdown,
-        workspaceDir: input.workspaceDir,
-        config: activeConfig,
-      });
-      return `Pipeline initialized! Proceeding with Gemini Deep Research phase.`;
-    },
-  });
-
-  // 2. Get Pipeline Status Action
-  useCopilotAction({
-    name: "get_pipeline_status",
-    description: "Get the current status of the active pipeline",
-    parameters: [],
-    handler: async () => {
-      const client = store.client;
-      const pipelineId = store.activePipelineId;
-      if (!client || !pipelineId) {
-        return { error: "No active pipeline. Initialize one first." };
-      }
-      return client.getPipelineStatus(pipelineId);
-    },
-  });
-
-  // 3. Resolve Gate Action
-  useCopilotAction({
-    name: "resolve_gate",
-    description: "Resolve an open HITL gate with a decision",
-    parameters: [
-      { name: "decision", type: "string", description: "APPROVE, STEER, or REJECT", required: true },
-      { name: "instructions", type: "string", description: "For STEER: detailed instructions for revision", required: false },
-      { name: "reason", type: "string", description: "For REJECT: reason for rejection", required: false },
-      { name: "note", type: "string", description: "Optional note", required: false },
-    ],
-    handler: async (input: any) => {
-      const status = store.pipelineStatus;
-      if (!status?.activeGate) {
-        return { error: "No active gate to resolve" };
-      }
-      await store.resolveGate(status.activeGate.gateId, input.decision, {
-        instructions: input.instructions,
-        reason: input.reason,
-        note: input.note,
-      });
-      return `Gate resolved with decision: ${input.decision}`;
-    },
-  });
-
-  // 4. Get Domain Document Action
-  useCopilotAction({
-    name: "get_domain_document",
-    description: "Get the domain research document",
-    parameters: [],
-    handler: async () => {
-      const status = store.pipelineStatus;
-      if (!status?.domainDocument) {
-        return { error: "Domain document not yet available" };
-      }
-      return {
-        markdown: status.domainDocument.markdown,
-        citations: status.domainDocument.citations,
-      };
-    },
-  });
-
-  // 5. Get Plan Action
-  useCopilotAction({
-    name: "get_plan",
-    description: "Get the strategic plan (CEO, Architecture, or Engineering)",
-    parameters: [
-      { name: "kind", type: "string", description: "ceo, architecture, or engineering", required: true },
-    ],
-    handler: async (input: any) => {
-      const status = store.pipelineStatus;
-      if (!status?.plan) {
-        return { error: "Plan not yet available" };
-      }
-      const key = `${input.kind}Plan` as "ceoPlan" | "architecturePlan" | "engineeringPlan";
-      return {
-        plan: (status.plan as any)[key],
-      };
-    },
-  });
-
-  // Make pipeline status readable to the copilot
-  useCopilotReadable({
-    description: "Current DLO pipeline status",
-    value: store.pipelineStatus
-      ? {
-          phase: store.pipelineStatus.phase,
-          board: store.pipelineStatus.board,
-          activeGate: store.pipelineStatus.activeGate,
-          budget: store.pipelineStatus.budget,
-        }
-      : { phase: "INIT", board: null, activeGate: null, budget: null },
-  });
+  // Sync manualResearchMode when config changes (e.g. user saves a key in settings)
+  useEffect(() => {
+    if (config.providers.research.apiKey && manualResearchMode && !pendingPipelineParams) {
+      setManualResearchMode(false);
+    } else if (!config.providers.research.apiKey && !store.pipelineStatus) {
+      setManualResearchMode(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.providers.research.apiKey]);
 
   const submitManualResearch = async () => {
     if (!manualResearch.trim()) return;
@@ -345,6 +369,17 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
 
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-slate-900 to-slate-800">
+      {/* Only register copilot actions/readables when a Gemini key is present to prevent "Failed to fetch chat completion" errors */}
+      {config.providers.research.apiKey && (
+        <CopilotActions
+          config={config}
+          store={store}
+          setPendingPipelineParams={setPendingPipelineParams}
+          setManualProjectName={setManualProjectName}
+          setManualObjectives={setManualObjectives}
+          setManualResearchMode={setManualResearchMode}
+        />
+      )}
       {/* Header */}
       <div className="bg-slate-950 border-b border-slate-700 p-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -357,6 +392,16 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
           </div>
 
           <div className="flex items-center gap-4">
+            {/* Agent Designer button — shown when a plan with modules is available */}
+            {store.activePipelineId && (store.pipelineStatus as any)?.plan?.engineeringPlan && (
+              <a
+                href={`/designer?pipeline=${store.activePipelineId}`}
+                className="flex items-center gap-2 px-3 py-1.5 bg-indigo-800 hover:bg-indigo-700 text-indigo-100 hover:text-white rounded border border-indigo-700 transition text-sm"
+              >
+                <GitBranch className="w-4 h-4" /> Agent Designer
+              </a>
+            )}
+
             {/* Settings Button */}
             <button
               onClick={() => setShowSettings(true)}
@@ -1621,6 +1666,17 @@ export default function ChatPage() {
     window.addEventListener("storage", updateHeaders);
     return () => window.removeEventListener("storage", updateHeaders);
   }, []);
+
+  // Only mount CopilotKit when a Gemini key is present.
+  // Without this guard, CopilotKit fires a request to /api/copilotkit on mount (even
+  // with no CopilotChat / actions rendered), which returns 500 and shows
+  // "Failed to fetch chat completion" when the key isn't configured.
+  // DloChat is safe to render outside CopilotKit because all copilotkit hooks live
+  // in <CopilotActions>, which itself is only rendered when config.providers.research.apiKey
+  // is set — guaranteed to be empty when headers["x-gemini-key"] is empty.
+  if (!headers["x-gemini-key"]) {
+    return <DloChat onConfigSave={updateHeaders} />;
+  }
 
   return (
     <CopilotKit runtimeUrl="/api/copilotkit" headers={headers}>

@@ -94,6 +94,8 @@ export const useDloStore = create<DloStore>()(
         if (typeof window !== "undefined") localStorage.setItem("dlo-active-pipeline", pipelineId);
         await get().startPolling();
       } catch {
+        // Clear stale localStorage entry so we don't retry on next load
+        if (typeof window !== "undefined") localStorage.removeItem("dlo-active-pipeline");
         set({ error: `Pipeline not found: ${pipelineId}` });
       }
     },
@@ -110,10 +112,12 @@ export const useDloStore = create<DloStore>()(
       const client = get().client;
       if (!client) return;
 
-      // Poll every 2 seconds
+      // Poll every 2 seconds; stop after 3 consecutive errors
+      let errorCount = 0;
       const poll = async () => {
         try {
           const status = await client.getPipelineStatus(pipelineId);
+          errorCount = 0;
           get().setPipelineStatus(status);
 
           // Stop polling if pipeline is terminal
@@ -122,8 +126,12 @@ export const useDloStore = create<DloStore>()(
             get().stopPolling();
           }
         } catch (e) {
-          console.error("Polling error:", e);
-          // Continue polling even on error
+          errorCount++;
+          if (errorCount >= 3) {
+            console.error("Polling stopped after 3 consecutive errors:", e);
+            if (typeof window !== "undefined") localStorage.removeItem("dlo-active-pipeline");
+            get().stopPolling();
+          }
         }
       };
 
