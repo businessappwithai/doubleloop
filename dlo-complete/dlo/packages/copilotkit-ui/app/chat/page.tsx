@@ -18,6 +18,7 @@ import { createDloClient } from "@/lib/dlo-client";
 import { format } from "date-fns";
 import { Activity, AlertCircle, CheckCircle, Clock, Zap, Settings, X, Code2, Database, FlaskConical, Rocket, ExternalLink, ShieldCheck, RefreshCw, GitBranch } from "lucide-react";
 import { WorkspaceViewer } from "@/components/WorkspaceViewer";
+import { ErdPanel } from "@/components/ErdPanel";
 
 /**
  * Registers CopilotKit actions/readables. Only mounted when a Gemini key is present
@@ -146,6 +147,59 @@ function CopilotActions({
     },
   });
 
+  useCopilotAction({
+    name: "generate_erd",
+    description:
+      "Generate (or regenerate) the entity-relationship diagram (EML/DBML) for the active pipeline from its research/domain document.",
+    parameters: [],
+    handler: async () => {
+      const pipelineId = store.activePipelineId;
+      if (!pipelineId) return { error: "No active pipeline." };
+      const res = await fetch(`/api/pipelines/${pipelineId}/erd/generate`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) return { error: data.error };
+      return {
+        entities: data.schema.entities.map((e: any) => e.name),
+        enums: data.schema.enums.map((e: any) => e.name),
+        warnings: data.warnings.map((w: any) => w.message),
+      };
+    },
+  });
+
+  useCopilotAction({
+    name: "get_erd_preview",
+    description: "Get the current ERD as DBML text (dbdiagram.io syntax) plus any parser warnings, without touching the database.",
+    parameters: [],
+    handler: async () => {
+      const pipelineId = store.activePipelineId;
+      if (!pipelineId) return { error: "No active pipeline." };
+      const res = await fetch(`/api/pipelines/${pipelineId}/erd`);
+      const data = await res.json();
+      if (!res.ok) return { error: data.error };
+      return { dbml: data.dbml, warnings: data.warnings.map((w: any) => w.message) };
+    },
+  });
+
+  useCopilotAction({
+    name: "sync_database_schema",
+    description:
+      "Diff the ERD against the pipeline's live database and apply the resulting create/alter statements, then refresh the ERD viewer. Requires the pipeline to have reached database provisioning. Destructive changes (drops, type changes) are NOT applied automatically and are returned separately for the user to confirm in the Database panel.",
+    parameters: [],
+    handler: async () => {
+      const pipelineId = store.activePipelineId;
+      if (!pipelineId) return { error: "No active pipeline." };
+      const res = await fetch(`/api/pipelines/${pipelineId}/erd/sync`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) return { error: data.error };
+      return {
+        appliedCount: data.applied.length,
+        applied: data.applied.map((s: any) => s.description),
+        destructivePendingConfirmation: data.destructive.map((s: any) => s.description),
+        viewerUrl: data.viewerUrl,
+      };
+    },
+  });
+
   useCopilotReadable({
     description: "Current DLO pipeline status",
     value: store.pipelineStatus
@@ -196,7 +250,7 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
   const [contextNote, setContextNote] = useState("");
   const [isSubmittingNote, setIsSubmittingNote] = useState(false);
   const [noteSubmitMsg, setNoteSubmitMsg] = useState<string | null>(null);
-  const [statusTab, setStatusTab] = useState<"status" | "code">("status");
+  const [statusTab, setStatusTab] = useState<"status" | "code" | "erd">("status");
   const [config, setConfig] = useState({
     copilotModel: "gemini-1.5-pro",
     providers: {
@@ -392,6 +446,16 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
           </div>
 
           <div className="flex items-center gap-4">
+            {/* Database & ERD button — shown once the research agent has produced a domain document */}
+            {store.activePipelineId && (store.pipelineStatus as any)?.domainDocument && (
+              <a
+                href={`/erd?pipeline=${store.activePipelineId}`}
+                className="flex items-center gap-2 px-3 py-1.5 bg-blue-800 hover:bg-blue-700 text-blue-100 hover:text-white rounded border border-blue-700 transition text-sm"
+              >
+                <Database className="w-4 h-4" /> Database &amp; ERD
+              </a>
+            )}
+
             {/* Agent Designer button — shown when a plan with modules is available */}
             {store.activePipelineId && (store.pipelineStatus as any)?.plan?.engineeringPlan && (
               <a
@@ -582,6 +646,18 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
                     <Code2 className="w-4 h-4" /> Workspace
                   </button>
                 )}
+                {store.pipelineStatus && (store.pipelineStatus as any)?.domainDocument && (
+                  <button
+                    onClick={() => setStatusTab("erd")}
+                    className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition border-b-2 ${
+                      statusTab === "erd"
+                        ? "border-blue-400 text-white"
+                        : "border-transparent text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    <Database className="w-4 h-4" /> Database
+                  </button>
+                )}
               </div>
 
               {/* Code panel */}
@@ -592,6 +668,13 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
                     isRunning={["EXECUTION_RUNNING", "DB_PROVISIONING_RUNNING", "TESTING_RUNNING", "APP_LAUNCH_RUNNING"].includes(store.pipelineStatus?.phase ?? "")}
                     onSteer={handleWorkspaceSteer}
                   />
+                </div>
+              )}
+
+              {/* ERD / Database panel */}
+              {statusTab === "erd" && store.activePipelineId && (
+                <div className="flex-1 overflow-hidden min-h-0">
+                  <ErdPanel pipelineId={store.activePipelineId} />
                 </div>
               )}
 

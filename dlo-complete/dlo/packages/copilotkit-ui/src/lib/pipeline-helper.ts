@@ -12,7 +12,7 @@ const execFileAsync = promisify(execFile);
 
 const DB_SERVICE_URL = process.env.DB_SERVICE_URL || "http://localhost:3099";
 
-async function dbCall(
+export async function dbCall(
   method: string,
   path: string,
   body?: any
@@ -34,7 +34,7 @@ async function dbCall(
 
 // ─── Claude Code CLI (supervisor + planner) ───────────────────────────────────
 
-async function spawnClaude(prompt: string, model: string, workspaceDir?: string): Promise<string> {
+export async function spawnClaude(prompt: string, model: string, workspaceDir?: string): Promise<string> {
   const cwd = workspaceDir || process.cwd();
   await mkdir(cwd, { recursive: true });
   return new Promise((resolve, reject) => {

@@ -6,7 +6,7 @@
 const nextConfig = {
   output: process.env.NEXT_OUTPUT === "standalone" ? "standalone" : undefined,
   reactStrictMode: true,
-  transpilePackages: ["@dlo/core", "@dlo/adapters-pi"],
+  transpilePackages: ["@dlo/core", "@dlo/adapters-pi", "@dlo/erd", "@dlo/language"],
   experimental: {
     optimizePackageImports: ["@copilotkit/react-ui", "@copilotkit/react-core"],
   },
