@@ -1,0 +1,414 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://erdwithai.dev/language/erdwithai-language.json",
+  "language": {
+    "id": "erdwithai-eml",
+    "name": "ERDwithAI Modeling Language",
+    "abbreviation": "EML",
+    "version": "1.0.0",
+    "basedOn": "mermaid",
+    "mermaidCompatibility": "All EML documents are valid, renderable Mermaid. EML is a semantic superset that assigns generator meaning to standard Mermaid constructs (erDiagram, flowchart, stateDiagram-v2) and to `%%`-prefixed directive comments.",
+    "description": "A single, standalone, Mermaid-based language for describing an application's Entity Relationship Diagram (ERD), its business rules, and its business workflows in one place. EML is the source language read by the ERDwithAI generator to produce full-stack applications (TanStack Start + NestJS, or OpenUI5 + OData V4).",
+    "fileExtensions": [".eml.mmd", ".erd.mmd", ".flow.mmd", ".rules.mmd", ".mmd"],
+    "encoding": "utf-8",
+    "caseSensitivity": {
+      "entityNames": "significant (PascalCase recommended)",
+      "attributeNames": "significant (snake_case recommended)",
+      "keywords": "significant (erDiagram, flowchart, etc.)",
+      "types": "insensitive (normalized to lower-case before mapping)",
+      "modifiers": "insensitive (normalized to UPPER-case before mapping)",
+      "hookTypes": "significant (camelCase, e.g. beforeCreate)"
+    },
+    "purpose": [
+      "Describe database structure (entities, attributes, keys, relationships) as an ERD.",
+      "Describe declarative business rules (decision logic, pricing, validation, eligibility) as decision flows that compile to GoRules JDM.",
+      "Describe imperative business workflows (lifecycle hooks and process orchestration) as flow/state diagrams with hook directives.",
+      "Provide one coherent, human- and machine-readable artifact that the generator consumes to emit code."
+    ]
+  },
+
+  "document": {
+    "description": "An EML document is a text file containing one or more sections. Each section opens with a Mermaid diagram keyword. A single file may contain multiple diagrams separated by blank lines; the generator classifies each by its opening keyword and by directive comments.",
+    "comments": {
+      "syntax": "%%",
+      "description": "Lines beginning with %% are Mermaid comments. Plain comments are ignored by renderers and by the generator. Comments beginning with a reserved directive keyword (%%hook, %%rule, %%meta, %%entity, %%enum, %%index, %%workflow, %%trigger, %%guard) carry semantic meaning to the generator while remaining renderer-safe.",
+      "plainCommentExample": "%% This is documentation, ignored by the generator",
+      "directiveCommentExample": "%%hook beforeCreate hashPassword on User"
+    },
+    "sectionClassifier": {
+      "description": "How the generator decides what a diagram block means.",
+      "rules": [
+        { "openingKeyword": "erDiagram", "section": "erd" },
+        { "openingKeyword": "flowchart", "section": "resolved by %%meta section directive; defaults to 'workflow' unless rule-shaped or marked kind: rules" },
+        { "openingKeyword": "graph", "section": "alias of flowchart" },
+        { "openingKeyword": "stateDiagram-v2", "section": "workflow (state-machine form)" },
+        { "openingKeyword": "stateDiagram", "section": "workflow (state-machine form, legacy)" }
+      ],
+      "disambiguation": "A flowchart is treated as a business-rules decision flow when it is preceded by `%%meta kind: rules` OR when it contains only decision/expression/function/io node shapes and no %%hook directives. Otherwise it is treated as a workflow."
+    }
+  },
+
+  "sections": {
+    "erd": {
+      "title": "Entity Relationship Diagram",
+      "opensWith": "erDiagram",
+      "consumedBy": "packages/generator/src/parsers/mermaid.parser.ts (MermaidParser.parse)",
+      "produces": "Entity[] and Relationship[] used by the code generator (migrations, DTOs, services, controllers, forms, tables).",
+      "constructs": {
+        "entityBlock": {
+          "grammar": "EntityName {\\n  <attribute>*\\n}",
+          "entityNameRule": "^[a-zA-Z][a-zA-Z0-9_]*$",
+          "recommendedCase": "PascalCase (Customer, OrderItem). snake_case (order_item) and prefixed names (bus_account, sys_user) are also accepted.",
+          "tableNameDerivation": "PascalCase/camelCase -> snake_case; ALL_CAPS/snake stays lower-case. Optional bus_/sys_ prefixes are preserved.",
+          "example": "Customer {\n    string id PK\n    string email UK\n    string first_name\n    date created_at\n}"
+        },
+        "attribute": {
+          "grammar": "<type>[(<length>)] <name> [<modifier> ...] [\"<description>\"]",
+          "attributeNameRule": "^[a-zA-Z][a-zA-Z0-9_]*$",
+          "recommendedCase": "snake_case (first_name, company_id).",
+          "length": "Optional decimal length in parentheses attached to the type, e.g. string(120). Captured as maxLength.",
+          "notes": [
+            "The first token is the type, the second is the name, remaining tokens are modifiers.",
+            "A quoted trailing string is treated as the attribute description/comment.",
+            "If an entity declares no id/_id attribute, the generator auto-adds `string id PK`.",
+            "timestamps (created_at, updated_at) are added by the generator by default (entity.timestamps = true)."
+          ],
+          "examples": [
+            "string id PK",
+            "string email UK",
+            "string(120) display_name",
+            "decimal amount OPTIONAL",
+            "string company_id FK OPTIONAL \"owning company\"",
+            "boolean is_active"
+          ]
+        },
+        "relationship": {
+          "grammar": "<LeftEntity> <cardinality> <RightEntity> : \"<label>\"",
+          "labelOptional": true,
+          "labelNormalization": "Trimmed, whitespace -> underscore, lower-cased to form the relationship name.",
+          "foreignKeyDerivation": "snake_case(targetEntity) with any bus_ prefix removed, suffixed with _id (e.g. Company -> company_id).",
+          "examples": [
+            "Company ||--o{ Contact : \"employs\"",
+            "Deal }o--|| DealStage : \"in_stage\"",
+            "Quote ||--o{ QuoteItem : \"contains\"",
+            "User ||--|| Team : \"managed_by\""
+          ]
+        }
+      }
+    },
+
+    "rules": {
+      "title": "Business Rules (Decision Flows)",
+      "opensWith": "flowchart TD  (with `%%meta kind: rules`)",
+      "consumedBy": "packages/web/src/lib/mermaid-flowchart-parser.ts -> packages/web/src/lib/jdm-converter.ts (convertToJdm)",
+      "produces": "A GoRules JDM decision graph (nodes + edges) used to evaluate declarative business logic (pricing, discounts, eligibility, validation, routing).",
+      "modelingPrinciple": "A business rule is a directed decision flow. Node *shape* determines its JDM role; edge *labels* carry the branch condition or transition name.",
+      "constructs": {
+        "node": {
+          "grammar": "<NodeId><shapeDelimiters label>",
+          "nodeIdRule": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "shapeSemantics": "See ruleNodes map. stadium=input/output, diamond=decision/switch, circle=function, rect=expression/action.",
+          "inputVsOutput": "A stadium node with no outgoing edges (only incoming) is an outputNode; otherwise it is an inputNode. This lets a single shape mark both Start and End."
+        },
+        "edge": {
+          "grammar": "<SourceId> -->|<label>| <TargetId>   (label optional)",
+          "labelMeaning": "For edges leaving a decision (diamond) node, the label is the branch condition (e.g. Yes / No / amount > 1000). For other edges it is an optional transition name.",
+          "examples": [
+            "B -->|Yes| C[Apply Premium Discount 15%]",
+            "B -->|No| D{Customer is VIP?}",
+            "C --> G(Calculate Final Price)"
+          ]
+        }
+      },
+      "example": "flowchart TD\n    A([Start: Order Received]) --> B{Order Amount > $1000?}\n    B -->|Yes| C[Apply Premium Discount 15%]\n    B -->|No| D{Customer is VIP?}\n    D -->|Yes| E[Apply VIP Discount 10%]\n    D -->|No| F[Apply Standard Pricing]\n    C --> G(Calculate Final Price)\n    E --> G\n    F --> G\n    G --> H([End: Price Calculated])"
+    },
+
+    "workflows": {
+      "title": "Business Workflows (Lifecycle Hooks & Process Orchestration)",
+      "opensWith": "flowchart TD  or  stateDiagram-v2",
+      "consumedBy": "packages/web/src/lib/workflow/hook-parser.ts (parseHooksFromFlowchart) and packages/web/src/lib/mermaid-flowchart-parser.ts",
+      "produces": "HookDefinition[] wired into the generated BaseService lifecycle, plus a visual process flow. Hooks map to entity CRUD lifecycle events at generation time.",
+      "modelingPrinciple": "A workflow is the visible process (a flow/state diagram) annotated with %%hook directives that bind named handlers to entity lifecycle events, and optional %%guard/%%trigger directives for authorization and event sources.",
+      "constructs": {
+        "hookDirective": {
+          "grammar": "%%hook <hookType> <handlerName> on <EntityName>[<params>]",
+          "params": "Optional [field: name, field: name] list scoping the hook to specific fields.",
+          "hookTypeRule": "one of the 13 hook types (see hooks map)",
+          "handlerNameRule": "^[a-zA-Z_][a-zA-Z0-9_]*$",
+          "entityRule": "^[a-zA-Z_][a-zA-Z0-9_]*$",
+          "examples": [
+            "%%hook beforeCreate hashPassword on User",
+            "%%hook afterCreate sendWelcomeEmail on User",
+            "%%hook beforeCreate generateSlug on Post[field: slug]",
+            "%%hook customValidate ensureCreditLimit on Order"
+          ]
+        },
+        "processNode": {
+          "description": "Standard flowchart/state nodes represent process steps; the same shape semantics as rules apply for visualization.",
+          "example": "flowchart TD\n    A[Client Request] --> B[Validate Request]\n    B --> C[beforeCreate: hashPassword]\n    C --> D[Process User]\n    D --> E[afterCreate: sendWelcomeEmail]\n    E --> F[Response]"
+        },
+        "stateForm": {
+          "description": "stateDiagram-v2 expresses a long-running/entity status workflow. States map to a status enum; transitions map to allowed status changes and can be guarded.",
+          "example": "stateDiagram-v2\n    [*] --> Draft\n    Draft --> Submitted : submit\n    Submitted --> Approved : approve\n    Submitted --> Rejected : reject\n    Approved --> [*]"
+        }
+      }
+    }
+  },
+
+  "types": {
+    "description": "Attribute type vocabulary. Aliases are normalized to a canonical type. Canonical types drive TypeScript, Zod, SQL/Kysely, OData EDM, and UI control mapping in the generator.",
+    "canonical": ["string", "text", "integer", "decimal", "boolean", "date", "datetime", "json"],
+    "map": {
+      "string": "string", "varchar": "string", "char": "string", "uuid": "string", "guid": "string", "id": "string",
+      "email": "string", "url": "string", "phone": "string", "password": "string", "color": "string",
+      "text": "text", "longtext": "text",
+      "int": "integer", "integer": "integer", "bigint": "integer", "smallint": "integer",
+      "number": "decimal", "decimal": "decimal", "float": "decimal", "double": "decimal", "money": "decimal", "amount": "decimal",
+      "bool": "boolean", "boolean": "boolean",
+      "date": "date",
+      "datetime": "datetime", "timestamp": "datetime", "time": "datetime",
+      "json": "json", "jsonb": "json", "object": "json", "array": "json"
+    },
+    "semanticHints": {
+      "description": "Aliases that normalize to a base type but carry UI/validation intent the generator may honor via naming or the extended %%meta field directive.",
+      "email": "string rendered as email input, validated as email",
+      "url": "string rendered as url input",
+      "password": "string rendered as password input, min length enforced",
+      "phone": "string rendered as tel input",
+      "color": "string rendered as color picker",
+      "uuid": "string treated as a UUID primary/foreign key"
+    },
+    "default": "string"
+  },
+
+  "modifiers": {
+    "description": "Trailing tokens on an ERD attribute. Normalized to UPPER-case. Unknown modifiers are ignored.",
+    "map": {
+      "PK": { "meaning": "Primary key", "effects": ["unique = true", "required handled by generator (auto-generated)", "sets entity.primaryKey"] },
+      "FK": { "meaning": "Foreign key", "effects": ["marks the column as a reference; relationship inference / navigation"] },
+      "UK": { "meaning": "Unique key", "effects": ["unique = true"] },
+      "UNIQUE": { "meaning": "Alias of UK", "effects": ["unique = true"] },
+      "OPTIONAL": { "meaning": "Nullable / not required", "effects": ["required = false"] },
+      "NULL": { "meaning": "Alias of OPTIONAL", "effects": ["required = false"] }
+    },
+    "defaults": {
+      "required": "true unless OPTIONAL/NULL or PK",
+      "unique": "false unless UK/UNIQUE/PK"
+    }
+  },
+
+  "cardinalities": {
+    "description": "Mermaid ER relationship operators and their semantic meaning. Left/right glyphs encode min/max multiplicity; EML maps the pair to a cardinality kind and infers the foreign-key side.",
+    "glyphReference": {
+      "||": "exactly one",
+      "|o": "zero or one",
+      "o|": "zero or one",
+      "}o": "zero or many",
+      "o{": "zero or many",
+      "}|": "one or many",
+      "|{": "one or many"
+    },
+    "map": [
+      { "operator": "||--||", "kind": "oneToOne", "example": "User ||--|| Profile : has" },
+      { "operator": "||--o{", "kind": "oneToMany", "example": "Company ||--o{ Contact : employs" },
+      { "operator": "||--|{", "kind": "oneToMany", "example": "Order ||--|{ OrderItem : contains" },
+      { "operator": "}o--||", "kind": "manyToOne", "example": "Deal }o--|| DealStage : in_stage" },
+      { "operator": "}|--||", "kind": "manyToOne", "example": "OrderItem }|--|| Order : belongs_to" },
+      { "operator": "}o--o{", "kind": "manyToMany", "example": "Student }o--o{ Course : enrolls" },
+      { "operator": "}|--|{", "kind": "manyToMany", "example": "Author }|--|{ Book : writes" },
+      { "operator": "|o--o|", "kind": "oneToOne", "example": "Employee |o--o| ParkingSpot : assigned" }
+    ]
+  },
+
+  "hooks": {
+    "description": "Lifecycle event points a workflow hook may bind to. Handlers run in the generated BaseService around CRUD operations (globalHookExecutor).",
+    "types": [
+      { "type": "beforeCreate", "phase": "before", "op": "create", "purpose": "Validate/transform an entity before insert (e.g. hash password, generate slug)." },
+      { "type": "afterCreate", "phase": "after", "op": "create", "purpose": "Side effects after insert (e.g. send welcome email, emit event)." },
+      { "type": "beforeUpdate", "phase": "before", "op": "update", "purpose": "Validate/transform before update." },
+      { "type": "afterUpdate", "phase": "after", "op": "update", "purpose": "Side effects after update (e.g. audit, cache invalidation)." },
+      { "type": "beforeDelete", "phase": "before", "op": "delete", "purpose": "Guard/validate before delete (e.g. block if referenced)." },
+      { "type": "afterDelete", "phase": "after", "op": "delete", "purpose": "Cleanup after delete (e.g. remove files)." },
+      { "type": "beforeQuery", "phase": "before", "op": "query", "purpose": "Mutate the query before it runs (e.g. tenant scoping)." },
+      { "type": "afterQuery", "phase": "after", "op": "query", "purpose": "Post-process query results." },
+      { "type": "customValidate", "phase": "validate", "op": "any", "purpose": "Cross-field/business validation independent of a single CRUD verb." },
+      { "type": "beforeRead", "phase": "before", "op": "read", "purpose": "Guard/transform a single-record read." },
+      { "type": "afterRead", "phase": "after", "op": "read", "purpose": "Post-process a single record (e.g. redact fields)." },
+      { "type": "beforeList", "phase": "before", "op": "list", "purpose": "Adjust list parameters (filter/sort/paginate)." },
+      { "type": "afterList", "phase": "after", "op": "list", "purpose": "Post-process a list result set." }
+    ],
+    "directive": {
+      "pattern": "%%hook <type> <handlerName> on <Entity>[<params>]",
+      "regex": "%%hook\\s+(\\w+)\\s+(\\w+)\\s+on\\s+(\\w+)(\\[(?:field:\\s*\\w+(?:\\s*,\\s*field:\\s*\\w+)*)?\\])?",
+      "paramForms": ["[field: slug]", "[field: slug, field: title]"]
+    }
+  },
+
+  "ruleNodes": {
+    "description": "Mapping of Mermaid node shapes to GoRules JDM node roles for business-rule decision flows.",
+    "map": [
+      {
+        "shape": "stadium",
+        "delimiters": "([ label ])",
+        "jdmType": "inputNode | outputNode",
+        "resolution": "outputNode when the node has only incoming edges; otherwise inputNode.",
+        "role": "Start / input context, or End / decision output.",
+        "example": "A([Start: Order Received])"
+      },
+      {
+        "shape": "diamond",
+        "delimiters": "{ label }",
+        "jdmType": "switchNode",
+        "role": "Decision / branch. Outgoing edge labels are branch conditions.",
+        "example": "B{Order Amount > $1000?}"
+      },
+      {
+        "shape": "circle",
+        "delimiters": "(( label ))",
+        "jdmType": "functionNode",
+        "role": "Custom function / computation step (JS expression or reusable function).",
+        "example": "G((Calculate Final Price))"
+      },
+      {
+        "shape": "rect",
+        "delimiters": "[ label ]",
+        "jdmType": "expressionNode",
+        "role": "Expression / assignment / action (set output fields, apply a value).",
+        "example": "C[Apply Premium Discount 15%]"
+      },
+      {
+        "shape": "rounded",
+        "delimiters": "( label )",
+        "jdmType": "functionNode",
+        "role": "Rounded rectangle, treated like a function/computation step (used for calculate steps).",
+        "example": "G(Calculate Final Price)"
+      }
+    ]
+  },
+
+  "workflowConstructs": {
+    "description": "Node/edge vocabulary for process workflows and state workflows.",
+    "flowShapes": {
+      "stadium": "Start/End terminal ( ([label]) )",
+      "rect": "Process step ( [label] )",
+      "diamond": "Gateway/decision ( {label} )",
+      "circle": "Event/signal ( ((label)) )",
+      "rounded": "Sub-process/task ( (label) )"
+    },
+    "stateForm": {
+      "start": "[*] --> FirstState",
+      "end": "LastState --> [*]",
+      "transition": "StateA --> StateB : eventName",
+      "mappingHint": "States are treated as a status enum for the bound entity; transitions define the allowed status changes."
+    }
+  },
+
+  "directives": {
+    "description": "Reserved %% directive comments. All are renderer-safe (ignored by Mermaid) and interpreted by the generator. Only %%hook is parsed by the current shipped parser; the remainder are the EML extension surface, documented here as the authoritative language contract.",
+    "reserved": [
+      {
+        "keyword": "%%meta",
+        "form": "%%meta <key>: <value>",
+        "purpose": "Document/section metadata: name, kind (erd|rules|workflow), version, entity binding, description, stack.",
+        "examples": ["%%meta name: CRM Core", "%%meta kind: rules", "%%meta entity: Order", "%%meta version: 1.0.0"]
+      },
+      {
+        "keyword": "%%hook",
+        "form": "%%hook <type> <handler> on <Entity>[<params>]",
+        "purpose": "Bind a named handler to an entity lifecycle event (SHIPPED, parsed by hook-parser.ts).",
+        "examples": ["%%hook beforeCreate hashPassword on User"]
+      },
+      {
+        "keyword": "%%entity",
+        "form": "%%entity <Name> <key>: <value>",
+        "purpose": "Attach entity-level metadata not expressible in the ERD block: table prefix (bus/sys), soft delete, label, icon, audited.",
+        "examples": ["%%entity Order audited: true", "%%entity Account prefix: bus", "%%entity Session softDelete: false"]
+      },
+      {
+        "keyword": "%%field",
+        "form": "%%field <Entity>.<attr> <key>: <value>",
+        "purpose": "Extended field metadata: ui control, default value, enum reference, min/max, help text, format.",
+        "examples": ["%%field Order.status enum: OrderStatus", "%%field Product.price min: 0", "%%field User.email unique: true"]
+      },
+      {
+        "keyword": "%%enum",
+        "form": "%%enum <Name>: <value1>, <value2>, ...",
+        "purpose": "Declare a named enumeration reusable by fields and by state workflows.",
+        "examples": ["%%enum OrderStatus: draft, submitted, approved, shipped, cancelled"]
+      },
+      {
+        "keyword": "%%index",
+        "form": "%%index <Entity>(<attr>[, <attr>...]) [unique]",
+        "purpose": "Declare a database index over one or more attributes.",
+        "examples": ["%%index Contact(email) unique", "%%index Order(company_id, status)"]
+      },
+      {
+        "keyword": "%%rule",
+        "form": "%%rule <name> on <Entity> event: <lifecycle> priority: <n>",
+        "purpose": "Bind a business-rule decision flow (a rules section) to an entity and lifecycle event.",
+        "examples": ["%%rule pricing on Order event: beforeCreate priority: 10"]
+      },
+      {
+        "keyword": "%%guard",
+        "form": "%%guard <roleExpr> on <Entity>.<op>",
+        "purpose": "RBAC guard: restrict a workflow step or CRUD op to roles (integrates with core rbac.types).",
+        "examples": ["%%guard role:admin on Order.delete", "%%guard role:sales|manager on Deal.update"]
+      },
+      {
+        "keyword": "%%trigger",
+        "form": "%%trigger <source> -> <handler> on <Entity>",
+        "purpose": "Declare an event/schedule source that starts a workflow (webhook, cron, message).",
+        "examples": ["%%trigger cron:0 0 * * * -> expireQuotes on Quote", "%%trigger webhook:payment -> markPaid on Order"]
+      },
+      {
+        "keyword": "%%workflow",
+        "form": "%%workflow <name> entity: <Entity> kind: <hook|state|saga>",
+        "purpose": "Name and classify a workflow section and bind it to an entity.",
+        "examples": ["%%workflow OrderFulfillment entity: Order kind: state"]
+      }
+    ]
+  },
+
+  "grammar": {
+    "notation": "EBNF-like; see language/grammar/erdwithai.ebnf for the full grammar.",
+    "topLevel": "document ::= ( comment | directive | erdSection | ruleSection | workflowSection | blankLine )*",
+    "erdSection": "erdSection ::= 'erDiagram' NEWLINE ( entityBlock | relationship | comment )*",
+    "entityBlock": "entityBlock ::= IDENT '{' NEWLINE attribute* '}' NEWLINE",
+    "attribute": "attribute ::= TYPE ['(' NUMBER ')'] IDENT modifier* [ STRING ] NEWLINE",
+    "relationship": "relationship ::= IDENT cardinality IDENT [ ':' STRING ] NEWLINE",
+    "ruleSection": "ruleSection ::= ('flowchart'|'graph') direction NEWLINE ( node | edge | comment )*",
+    "workflowSection": "workflowSection ::= (('flowchart'|'graph') direction | 'stateDiagram-v2') NEWLINE ( node | edge | transition | hookDirective | comment )*"
+  },
+
+  "generatorContract": {
+    "description": "How each section feeds the generator pipeline.",
+    "pipeline": [
+      "1. ERD section -> MermaidParser -> Entity[] + Relationship[] -> migrations, DTOs, services, controllers, forms, tables.",
+      "2. Rules section -> mermaid-flowchart-parser -> convertToJdm -> GoRules JDM graph -> decision service.",
+      "3. Workflow section -> hook-parser -> HookDefinition[] -> generated BaseService lifecycle wiring; state form -> status enum + transition guards."
+    ],
+    "referenceFiles": {
+      "erdParser": "packages/generator/src/parsers/mermaid.parser.ts",
+      "flowchartParser": "packages/web/src/lib/mermaid-flowchart-parser.ts",
+      "jdmConverter": "packages/web/src/lib/jdm-converter.ts",
+      "hookParser": "packages/web/src/lib/workflow/hook-parser.ts",
+      "orchestrator": "packages/generator/src/generators/orchestrator.ts"
+    }
+  },
+
+  "conformance": {
+    "levels": {
+      "core": "erDiagram entities, attributes with PK/FK/UK/OPTIONAL, and relationship cardinalities. Fully parsed by the shipped ERD parser.",
+      "rules": "flowchart decision flows convertible to JDM via shape semantics. Fully parsed by the shipped flowchart parser + JDM converter.",
+      "workflow-hooks": "%%hook directives. Fully parsed by the shipped hook parser.",
+      "extended": "All %%meta/%%entity/%%field/%%enum/%%index/%%rule/%%guard/%%trigger/%%workflow directives and stateDiagram-v2 workflows. Reserved and documented; renderer-safe; adopted incrementally by the generator."
+    },
+    "validationRules": [
+      "Every entity name must match ^[a-zA-Z][a-zA-Z0-9_]*$ and be unique within the document.",
+      "Every relationship endpoint should reference a declared entity.",
+      "A hook directive's entity should reference a declared entity; its type must be one of the 13 hook types.",
+      "A rules flow must have at least one input (stadium/start) and one output (stadium/end).",
+      "Enum references in %%field must resolve to a declared %%enum."
+    ]
+  }
+}

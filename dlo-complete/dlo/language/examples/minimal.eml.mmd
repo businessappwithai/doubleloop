@@ -1,0 +1,59 @@
+%% ============================================================================
+%% EML Minimal Example — smallest complete model with all three sections.
+%% Every diagram below is valid, renderable Mermaid.
+%% ============================================================================
+
+%% ---- Section 1: ERD (structure) -------------------------------------------
+%%meta name: Minimal Blog
+%%meta kind: erd
+%%enum PostStatus: draft, published, archived
+erDiagram
+    Author {
+        string id PK
+        string email UK
+        string name
+        boolean is_active
+    }
+
+    Post {
+        string  id PK
+        string  author_id FK
+        string  title
+        string  slug UK
+        text    body
+        string  status
+        datetime published_at OPTIONAL
+    }
+
+    Author ||--o{ Post : "writes"
+
+    %%field Post.status enum: PostStatus
+    %%index Post(slug) unique
+
+%% ---- Section 2: Business rule (declarative decision flow) ------------------
+%%meta name: Publish Eligibility
+%%meta kind: rules
+%%rule publishGate on Post event: beforeUpdate priority: 10
+flowchart TD
+    A([Start: Publish Requested]) --> B{Body length >= 100?}
+    B -->|No| R1[Reject: Too Short]
+    B -->|Yes| C{Author is_active?}
+    C -->|No| R2[Reject: Inactive Author]
+    C -->|Yes| P(Approve Publish)
+    R1 --> E([End])
+    R2 --> E
+    P  --> E
+
+%% ---- Section 3: Workflow (lifecycle hooks) --------------------------------
+%%meta name: Post Authoring
+%%meta kind: workflow
+%%workflow PostAuthoring entity: Post kind: hook
+flowchart TD
+    A[Client Request] --> B[Validate Request]
+    B --> C[beforeCreate: generateSlug]
+    C --> D[Process Post]
+    D --> E[afterUpdate: reindexSearch]
+    E --> F[Response]
+
+    %%hook beforeCreate generateSlug on Post[field: slug]
+    %%hook afterUpdate reindexSearch on Post

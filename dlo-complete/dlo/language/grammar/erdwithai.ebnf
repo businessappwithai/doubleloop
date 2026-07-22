@@ -1,0 +1,127 @@
+(* ==========================================================================
+   ERDwithAI Modeling Language (EML) — Formal Grammar
+   Version: 1.0.0
+   Notation: ISO/IEC 14977-style EBNF
+   Companion to: language/erdwithai-language.json
+
+   EML is a semantic superset of Mermaid. A document is a sequence of sections
+   (erDiagram / flowchart / stateDiagram-v2) interleaved with %% comments and
+   %% directive comments. Whitespace between tokens is insignificant unless
+   noted; NEWLINE is significant as a statement terminator.
+   ========================================================================== *)
+
+document        = { line } ;
+line            = ( comment | directive | erdSection | flowSection
+                  | stateSection | blank ) , NEWLINE ;
+
+blank           = { WS } ;
+
+(* --------------------------------------------------------------------------
+   Comments and directives
+   -------------------------------------------------------------------------- *)
+comment         = "%%" , { CHAR - reservedStart } , { CHAR } ;
+directive       = metaDir | hookDir | entityDir | fieldDir | enumDir
+                | indexDir | ruleDir | guardDir | triggerDir | workflowDir ;
+
+metaDir         = "%%meta" , WS , key , ":" , WS , value ;
+hookDir         = "%%hook" , WS , hookType , WS , ident , WS , "on" , WS ,
+                  ident , [ hookParams ] ;
+hookParams      = "[" , [ fieldRef , { "," , WS , fieldRef } ] , "]" ;
+fieldRef        = "field:" , WS , ident ;
+entityDir       = "%%entity" , WS , ident , WS , key , ":" , WS , value ;
+fieldDir        = "%%field" , WS , ident , "." , ident , WS , key , ":" ,
+                  WS , value ;
+enumDir         = "%%enum" , WS , ident , ":" , WS , value ,
+                  { "," , WS , value } ;
+indexDir        = "%%index" , WS , ident , "(" , ident , { "," , WS , ident } ,
+                  ")" , [ WS , "unique" ] ;
+ruleDir         = "%%rule" , WS , ident , WS , "on" , WS , ident , WS ,
+                  "event:" , WS , hookType , [ WS , "priority:" , WS , NUMBER ] ;
+guardDir        = "%%guard" , WS , roleExpr , WS , "on" , WS , ident , "." ,
+                  ident ;
+triggerDir      = "%%trigger" , WS , source , WS , "->" , WS , ident , WS ,
+                  "on" , WS , ident ;
+workflowDir     = "%%workflow" , WS , ident , WS , "entity:" , WS , ident ,
+                  WS , "kind:" , WS , ( "hook" | "state" | "saga" ) ;
+
+roleExpr        = role , { "|" , role } ;
+role            = "role:" , ident ;
+source          = ( "cron:" , { CHAR - NEWLINE } )
+                | ( "webhook:" , ident )
+                | ( "message:" , ident ) ;
+
+(* --------------------------------------------------------------------------
+   ERD section
+   -------------------------------------------------------------------------- *)
+erdSection      = "erDiagram" , NEWLINE , { erdStmt } ;
+erdStmt         = ( entityBlock | relationship | comment | directive | blank ) ,
+                  NEWLINE ;
+
+entityBlock     = ident , WS , "{" , NEWLINE , { attribute , NEWLINE } ,
+                  "}" ;
+attribute       = type , [ "(" , NUMBER , ")" ] , WS , ident ,
+                  { WS , modifier } , [ WS , STRING ] ;
+
+relationship    = ident , WS , cardinality , WS , ident ,
+                  [ WS , ":" , WS , ( STRING | ident ) ] ;
+
+cardinality     = leftCard , "--" , rightCard ;
+leftCard        = "||" | "|o" | "}o" | "}|" ;
+rightCard       = "||" | "o|" | "o{" | "|{" ;
+
+type            = ident ;   (* normalized via types.map; unknown -> string *)
+modifier        = "PK" | "FK" | "UK" | "UNIQUE" | "OPTIONAL" | "NULL"
+                | ident ;   (* unknown modifiers are ignored *)
+
+hookType        = "beforeCreate" | "afterCreate" | "beforeUpdate"
+                | "afterUpdate" | "beforeDelete" | "afterDelete"
+                | "beforeQuery"  | "afterQuery"  | "customValidate"
+                | "beforeRead"   | "afterRead"   | "beforeList" | "afterList" ;
+
+(* --------------------------------------------------------------------------
+   Flowchart section (business rules OR hook workflow)
+   -------------------------------------------------------------------------- *)
+flowSection     = ( "flowchart" | "graph" ) , WS , direction , NEWLINE ,
+                  { flowStmt } ;
+direction       = "TD" | "TB" | "BT" | "LR" | "RL" ;
+flowStmt        = ( edge | nodeDef | comment | directive | blank ) , NEWLINE ;
+
+edge            = nodeRef , WS , arrow , [ edgeLabel ] , WS , nodeRef ;
+arrow           = "-->" | "---" | "-.->" | "==>" ;
+edgeLabel       = "|" , { CHAR - "|" } , "|" ;
+nodeRef         = ident , [ shape ] ;
+nodeDef         = ident , shape ;
+shape           = stadium | circle | diamond | rounded | rect ;
+stadium         = "([" , label , "])" ;
+circle          = "((" , label , "))" ;
+diamond         = "{"  , label , "}" ;
+rounded         = "("  , label , ")" ;
+rect            = "["  , label , "]" ;
+label           = { CHAR - shapeClose } ;
+
+(* --------------------------------------------------------------------------
+   State section (state workflow)
+   -------------------------------------------------------------------------- *)
+stateSection    = ( "stateDiagram-v2" | "stateDiagram" ) , NEWLINE ,
+                  { stateStmt } ;
+stateStmt       = ( transition | comment | directive | blank ) , NEWLINE ;
+transition      = stateRef , WS , "-->" , WS , stateRef ,
+                  [ WS , ":" , WS , { CHAR - NEWLINE } ] ;
+stateRef        = "[*]" | ident ;
+
+(* --------------------------------------------------------------------------
+   Terminals
+   -------------------------------------------------------------------------- *)
+ident           = LETTER , { LETTER | DIGIT | "_" } ;
+key             = LETTER , { LETTER | DIGIT | "_" } ;
+value           = { CHAR - NEWLINE } ;
+STRING          = '"' , { CHAR - '"' } , '"' ;
+NUMBER          = DIGIT , { DIGIT } ;
+LETTER          = "A" | "..." | "Z" | "a" | "..." | "z" ;
+DIGIT           = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+WS              = ? one or more spaces or tabs ? ;
+NEWLINE         = ? line feed, optionally preceded by carriage return ? ;
+CHAR            = ? any Unicode character ? ;
+reservedStart   = ? one of: meta hook entity field enum index rule guard
+                    trigger workflow — i.e. a reserved directive keyword ? ;
+shapeClose      = ? the closing delimiter of the current shape ? ;

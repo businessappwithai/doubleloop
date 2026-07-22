@@ -1,0 +1,153 @@
+%% ============================================================================
+%% EML Example — CRM
+%% A full model expressed in the ERDwithAI Modeling Language: the data model
+%% (ERD), declarative business rules, and business workflows in one artifact.
+%% All diagrams are valid, renderable Mermaid.
+%% ============================================================================
+
+%% ---- Section 1: ERD --------------------------------------------------------
+%%meta name: CRM Core
+%%meta kind: erd
+%%meta version: 1.0.0
+%%enum DealStageName: qualification, proposal, negotiation, won, lost
+%%enum TaskPriority: low, medium, high, urgent
+erDiagram
+    Company {
+        string  id PK
+        string  name
+        string  industry OPTIONAL
+        string  website OPTIONAL
+        integer employee_count OPTIONAL
+        decimal annual_revenue OPTIONAL
+        string  status
+        string  owner_id FK
+    }
+
+    Contact {
+        string id PK
+        string company_id FK OPTIONAL
+        string first_name
+        string last_name
+        string email UK
+        string phone OPTIONAL
+        string job_title OPTIONAL
+        string status
+        string owner_id FK
+    }
+
+    Deal {
+        string  id PK
+        string  company_id FK OPTIONAL
+        string  contact_id FK OPTIONAL
+        string  name
+        decimal amount OPTIONAL
+        string  stage
+        integer probability OPTIONAL
+        date    expected_close_date OPTIONAL
+        string  status
+        string  owner_id FK
+    }
+
+    Task {
+        string   id PK
+        string   deal_id FK OPTIONAL
+        string   contact_id FK OPTIONAL
+        string   title
+        text     description OPTIONAL
+        string   priority
+        string   status
+        date     due_date OPTIONAL
+        string   assigned_to FK
+    }
+
+    User {
+        string  id PK
+        string  email UK
+        string  first_name
+        string  last_name
+        string  role
+        boolean is_active
+    }
+
+    Company ||--o{ Contact : "employs"
+    Company ||--o{ Deal    : "has"
+    Contact ||--o{ Deal    : "associated_with"
+    Deal    ||--o{ Task    : "has"
+    Contact ||--o{ Task    : "has"
+    User    ||--o{ Company : "owns"
+    User    ||--o{ Deal    : "owns"
+    User    ||--o{ Task    : "assigned"
+
+    %%field Deal.stage enum: DealStageName
+    %%field Task.priority enum: TaskPriority
+    %%index Contact(email) unique
+    %%index Deal(company_id, status)
+    %%entity Deal audited: true
+    %%entity Company prefix: bus
+
+%% ---- Section 2: Business rule — deal probability scoring -------------------
+%%meta name: Deal Probability
+%%meta kind: rules
+%%rule dealScoring on Deal event: beforeUpdate priority: 10
+flowchart TD
+    S([Start: Deal Updated]) --> Q1{Stage == won?}
+    Q1 -->|Yes| W[Set Probability 100%]
+    Q1 -->|No| Q2{Stage == lost?}
+    Q2 -->|Yes| L[Set Probability 0%]
+    Q2 -->|No| Q3{Amount > 50000?}
+    Q3 -->|Yes| H[Set Probability 70%]
+    Q3 -->|No| M[Set Probability 40%]
+    W --> C((Recompute Forecast))
+    L --> C
+    H --> C
+    M --> C
+    C --> E([End: Scored])
+
+%% ---- Section 3: Business rule — lead routing -------------------------------
+%%meta name: Lead Routing
+%%meta kind: rules
+%%rule leadRouting on Contact event: afterCreate priority: 20
+flowchart TD
+    A([Start: New Contact]) --> B{Company annual_revenue > 1000000?}
+    B -->|Yes| T1[Assign to Enterprise Team]
+    B -->|No| C{Has job_title contains VP or Chief?}
+    C -->|Yes| T2[Assign to Mid-Market Team]
+    C -->|No| T3[Assign to SMB Queue]
+    T1 --> Z([End])
+    T2 --> Z
+    T3 --> Z
+
+%% ---- Section 4: Workflow — deal lifecycle (state machine) ------------------
+%%meta name: Deal Lifecycle
+%%meta kind: workflow
+%%workflow DealLifecycle entity: Deal kind: state
+stateDiagram-v2
+    [*] --> qualification
+    qualification --> proposal    : qualify
+    proposal      --> negotiation : send_proposal
+    negotiation   --> won         : close_won
+    negotiation   --> lost        : close_lost
+    won --> [*]
+    lost --> [*]
+
+    %%guard role:sales|manager on Deal.update
+    %%guard role:manager on Deal.close_won
+    %%trigger cron:0 9 * * * -> nudgeStaleDeals on Deal
+
+%% ---- Section 5: Workflow — contact lifecycle hooks -------------------------
+%%meta name: Contact Hooks
+%%meta kind: workflow
+%%workflow ContactHooks entity: Contact kind: hook
+flowchart TD
+    A[Client Request] --> B[Validate Request]
+    B --> C[beforeCreate: normalizeEmail]
+    C --> D[customValidate: ensureUniqueEmail]
+    D --> E[Process Contact]
+    E --> F[afterCreate: enqueueWelcomeSequence]
+    F --> G[afterUpdate: syncToMarketing]
+    G --> H[Response]
+
+    %%hook beforeCreate normalizeEmail on Contact[field: email]
+    %%hook customValidate ensureUniqueEmail on Contact[field: email]
+    %%hook afterCreate enqueueWelcomeSequence on Contact
+    %%hook afterUpdate syncToMarketing on Contact

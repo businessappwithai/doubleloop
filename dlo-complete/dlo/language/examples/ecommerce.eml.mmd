@@ -1,0 +1,151 @@
+%% ============================================================================
+%% EML Example — E-Commerce
+%% Data model + business rules + workflows for an online store, in one artifact.
+%% All diagrams are valid, renderable Mermaid.
+%% ============================================================================
+
+%% ---- Section 1: ERD --------------------------------------------------------
+%%meta name: Store Core
+%%meta kind: erd
+%%meta version: 1.0.0
+%%enum OrderStatus: cart, placed, paid, packed, shipped, delivered, cancelled, refunded
+%%enum FulfilmentEvent: place, pay, pack, ship, deliver, cancel, refund
+erDiagram
+    Customer {
+        string  id PK
+        string  email UK
+        string  password_hash
+        string  first_name
+        string  last_name
+        string  phone OPTIONAL
+        boolean is_verified
+    }
+
+    Product {
+        string  id PK
+        string  name
+        string  sku UK
+        text    description OPTIONAL
+        decimal unit_price
+        integer stock_qty
+        boolean is_active
+    }
+
+    Category {
+        string id PK
+        string name
+        string parent_id FK OPTIONAL
+    }
+
+    Order {
+        string  id PK
+        string  customer_id FK
+        string  order_number UK
+        string  status
+        decimal subtotal
+        decimal discount_amount
+        decimal shipping_amount
+        decimal total_amount
+        datetime placed_at OPTIONAL
+    }
+
+    OrderItem {
+        string  id PK
+        string  order_id FK
+        string  product_id FK
+        integer quantity
+        decimal unit_price
+        decimal line_total
+    }
+
+    Payment {
+        string  id PK
+        string  order_id FK
+        string  method
+        string  status
+        decimal amount
+        datetime captured_at OPTIONAL
+    }
+
+    Customer ||--o{ Order     : "places"
+    Order    ||--o{ OrderItem : "contains"
+    Product  ||--o{ OrderItem : "ordered_in"
+    Order    ||--o{ Payment   : "paid_by"
+    Category ||--o{ Product   : "categorizes"
+    Category ||--o{ Category  : "has_subcategory"
+
+    %%field Order.status enum: OrderStatus
+    %%index Order(customer_id, status)
+    %%index Product(sku) unique
+    %%entity Order audited: true
+
+%% ---- Section 2: Business rule — pricing & discount -------------------------
+%%meta name: Order Pricing
+%%meta kind: rules
+%%rule pricing on Order event: beforeUpdate priority: 10
+flowchart TD
+    A([Start: Order Repriced]) --> B{Subtotal > 1000?}
+    B -->|Yes| C[Apply Premium Discount 15%]
+    B -->|No| D{Customer is_verified?}
+    D -->|Yes| E[Apply Loyalty Discount 5%]
+    D -->|No| F[No Discount]
+    C --> G(Calculate Total)
+    E --> G
+    F --> G
+    G --> H([End: Priced])
+
+%% ---- Section 3: Business rule — free shipping eligibility ------------------
+%%meta name: Free Shipping
+%%meta kind: rules
+%%rule freeShipping on Order event: beforeUpdate priority: 20
+flowchart TD
+    S([Start]) --> Q1{Total >= 50?}
+    Q1 -->|No| P1[Charge Standard Shipping]
+    Q1 -->|Yes| Q2{Item count >= 3?}
+    Q2 -->|Yes| P2[Free Express Shipping]
+    Q2 -->|No| P3[Free Standard Shipping]
+    P1 --> R((Set Shipping Amount))
+    P2 --> R
+    P3 --> R
+    R --> E([End])
+
+%% ---- Section 4: Workflow — order fulfilment (state machine) ----------------
+%%meta name: Order Fulfilment
+%%meta kind: workflow
+%%workflow OrderFulfilment entity: Order kind: state
+stateDiagram-v2
+    [*] --> cart
+    cart      --> placed    : place
+    placed    --> paid      : pay
+    placed    --> cancelled : cancel
+    paid      --> packed    : pack
+    packed    --> shipped   : ship
+    shipped   --> delivered : deliver
+    paid      --> refunded  : refund
+    delivered --> [*]
+    cancelled --> [*]
+    refunded  --> [*]
+
+    %%guard role:customer on Order.place
+    %%guard role:warehouse|admin on Order.pack
+    %%guard role:admin on Order.refund
+    %%trigger webhook:payment -> markPaid on Order
+    %%trigger webhook:carrier -> markShipped on Order
+
+%% ---- Section 5: Workflow — checkout hooks ----------------------------------
+%%meta name: Checkout Hooks
+%%meta kind: workflow
+%%workflow CheckoutHooks entity: Order kind: hook
+flowchart TD
+    A[Client Request] --> B[Validate Cart]
+    B --> C[customValidate: ensureStockAvailable]
+    C --> D[beforeUpdate: recomputeTotals]
+    D --> E[Process Order]
+    E --> F[afterUpdate: decrementInventory]
+    F --> G[afterUpdate: sendOrderConfirmation]
+    G --> H[Response]
+
+    %%hook customValidate ensureStockAvailable on Order
+    %%hook beforeUpdate recomputeTotals on Order
+    %%hook afterUpdate decrementInventory on Order
+    %%hook afterUpdate sendOrderConfirmation on Order

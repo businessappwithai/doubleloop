@@ -165,7 +165,7 @@ function CopilotActions({
  * Inner component that uses the DLO store and CopilotKit hooks.
  * Wrapped by CopilotKit in the page component below.
  */
-function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
+function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () => void; copilotKitReady?: boolean }) {
   const store = useDloStore();
   const setClient = useDloStore((state) => state.setClient);
   const [daemonUrl, setDaemonUrl] = useState("http://localhost:8090");
@@ -369,8 +369,8 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
 
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-slate-900 to-slate-800">
-      {/* Only register copilot actions/readables when a Gemini key is present to prevent "Failed to fetch chat completion" errors */}
-      {config.providers.research.apiKey && (
+      {/* Only register copilot actions/readables when CopilotKit is actually wrapping this component */}
+      {copilotKitReady && (
         <CopilotActions
           config={config}
           store={store}
@@ -467,8 +467,8 @@ function DloChat({ onConfigSave }: { onConfigSave?: () => void }) {
       <div className="flex-1 overflow-hidden">
         {/* When no key: research panel takes full width; when key present: 2/3 chat + 1/3 panel */}
         <div className={`h-full grid grid-cols-1 gap-4 p-4 ${config.providers.research.apiKey ? "md:grid-cols-3" : "md:grid-cols-1"}`}>
-          {/* Chat — only mount when a Gemini key is configured (prevents "Failed to fetch chat completion") */}
-          {config.providers.research.apiKey && (
+          {/* Chat — only mount when CopilotKit is actually wrapping this component */}
+          {copilotKitReady && (
             <div className="md:col-span-2 bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
               <CopilotChat
                 instructions="You are DLO, an autonomous development pipeline orchestrator. Help the user initialize pipelines, monitor progress, resolve HITL gates, and view generated artifacts. Be professional, concise, and always provide actionable feedback."
@@ -1675,12 +1675,12 @@ export default function ChatPage() {
   // in <CopilotActions>, which itself is only rendered when config.providers.research.apiKey
   // is set — guaranteed to be empty when headers["x-gemini-key"] is empty.
   if (!headers["x-gemini-key"]) {
-    return <DloChat onConfigSave={updateHeaders} />;
+    return <DloChat onConfigSave={updateHeaders} copilotKitReady={false} />;
   }
 
   return (
     <CopilotKit runtimeUrl="/api/copilotkit" headers={headers}>
-      <DloChat onConfigSave={updateHeaders} />
+      <DloChat onConfigSave={updateHeaders} copilotKitReady={true} />
     </CopilotKit>
   );
 }

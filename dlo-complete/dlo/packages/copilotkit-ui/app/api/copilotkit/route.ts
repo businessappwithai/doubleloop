@@ -77,7 +77,7 @@ export async function POST(req: Request) {
     const model = genAI.getGenerativeModel({ model: finalModelName });
 
     const copilotRuntime = new CopilotRuntime();
-    return copilotRuntime.response(req, new GoogleGenerativeAIAdapter({ model }));
+    return await copilotRuntime.response(req, new GoogleGenerativeAIAdapter({ model }));
   } catch (error: any) {
     console.error("CopilotKit route error:", error);
     return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { "content-type": "application/json" } });
