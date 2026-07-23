@@ -1,0 +1,29 @@
+{
+  "name": "@dlo/erd",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsup",
+    "clean": "rm -rf dist",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@dlo/language": "workspace:*",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.10",
+    "tsup": "^8.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^1.0.0"
+  }
+}

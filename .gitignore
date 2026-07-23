@@ -39,3 +39,6 @@ pnpm-debug.log*
 .test-tmp/
 dlo-complete.zip
 .gstack/
+
+# Generated per-pipeline Liam ERD viewer static sites
+dlo-complete/dlo/packages/copilotkit-ui/public/erd/
