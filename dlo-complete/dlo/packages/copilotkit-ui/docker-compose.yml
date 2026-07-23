@@ -14,6 +14,8 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - PI_API_KEY=${PI_API_KEY}
+      - LANGFLOW_URL=${LANGFLOW_URL:-http://langflow:7860}
+      - LANGFLOW_API_KEY=${LANGFLOW_API_KEY}
       - NEXT_PUBLIC_DLO_DAEMON_URL=${NEXT_PUBLIC_DLO_DAEMON_URL:-http://localhost:8090}
     volumes:
       - dlo-pipelines:/app/.dlo/pipelines
@@ -25,5 +27,22 @@ services:
       retries: 3
       start_period: 15s
 
+  # Langflow — the subagent-configuration surface. Open a pipeline's agent
+  # graph via "Open in Langflow" on the /documents page (or POST
+  # /api/pipelines/<id>/langflow/flow), edit vendor/model/prompt fields,
+  # then Apply. Optional: DLO falls back to the built-in designer canvas
+  # when Langflow is unreachable.
+  langflow:
+    image: langflowai/langflow:latest
+    ports:
+      - "7860:7860"
+    environment:
+      - LANGFLOW_HOST=0.0.0.0
+      - LANGFLOW_PORT=7860
+    volumes:
+      - langflow-data:/app/langflow
+    restart: unless-stopped
+
 volumes:
   dlo-pipelines:
+  langflow-data:
