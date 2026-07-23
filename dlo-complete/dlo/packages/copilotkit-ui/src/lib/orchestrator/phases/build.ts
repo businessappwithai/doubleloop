@@ -16,6 +16,8 @@
 
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import {
   type PipelineState,
   type AgentAssignment,
@@ -192,7 +194,10 @@ async function reviewWorkspace(state: PipelineState): Promise<{ passed: boolean;
   } catch { /* ocr unavailable — Claude review below */ }
 
   try {
-    const { stdout: diffFull } = await execFileAsync("git", ["diff"], {
+    // Confine the diff to the workspace directory — a bare `git diff` from a
+    // workspace nested inside a larger repo returns the WHOLE repo's diff,
+    // and the reviewer would fail modules over unrelated files.
+    const { stdout: diffFull } = await execFileAsync("git", ["diff", "--", "."], {
       cwd: state.workspaceDir,
       timeout: 15_000,
     }).catch(() => ({ stdout: "" }));
@@ -219,6 +224,29 @@ Otherwise list the specific errors that must be fixed (one per line).`,
   }
 }
 
+/**
+ * Make sure the workspace's npm dependencies are installed before exit
+ * clauses run — otherwise typecheck/build clauses fail with "cannot find
+ * module" no matter how good the generated code is, and retries fly blind.
+ * Idempotent: npm short-circuits quickly when node_modules is current.
+ */
+async function ensureDependencies(state: PipelineState): Promise<{ ok: boolean; detail: string }> {
+  if (!existsSync(join(state.workspaceDir, "package.json"))) return { ok: true, detail: "" };
+  try {
+    await execFileAsync("npm", ["install", "--prefer-offline", "--no-audit", "--no-fund"], {
+      cwd: state.workspaceDir,
+      timeout: 300_000,
+      env: { ...process.env },
+    });
+    return { ok: true, detail: "" };
+  } catch (e: any) {
+    return {
+      ok: false,
+      detail: `npm install failed: ${((e.stderr || "") + (e.stdout || "") || e.message).slice(-1200)}`,
+    };
+  }
+}
+
 /** Run a module's command exit clauses. Non-command kinds are skipped here. */
 async function runExitClauses(
   state: PipelineState,
@@ -233,9 +261,12 @@ async function runExitClauses(
       const expected = clause.expect?.exitCode ?? 0;
       const actual = typeof e.code === "number" ? e.code : 1;
       if (actual !== expected) {
+        // Capture the TAIL of the output — build tools print the actual
+        // error last; the head is usually banner noise.
+        const output = ((e.stdout || "") + "\n" + (e.stderr || "")).trim() || e.message || "";
         return {
           passed: false,
-          detail: `Clause ${clause.clauseId} (${clause.description}) failed: ${(e.stderr || e.stdout || e.message || "").slice(0, 800)}`,
+          detail: `Clause ${clause.clauseId} (${clause.description}) failed: ${output.slice(-1500)}`,
         };
       }
     }
@@ -251,7 +282,10 @@ async function runOneModule(pipelineId: string, mod: PlanModule): Promise<boolea
   const assignment = assignmentFor(state, mod.moduleId);
   const maxAttempts = assignment.maxAttempts ?? mod.maxAttempts ?? 3;
 
-  let critique = "";
+  // Seed the critique with the failure from a previous fleet run (if the
+  // gate was reopened after a FAILED execution) so retries keep their memory.
+  let critique =
+    (state.board?.modules.find((m) => m.moduleId === mod.moduleId) as any)?.failure || "";
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const latest = await getPipeline(pipelineId);
     if (!latest || latest.phase === "ABORTED" || latest.phase === "FAILED") return false;
@@ -283,6 +317,13 @@ async function runOneModule(pipelineId: string, mod: PlanModule): Promise<boolea
     if (!review.passed) {
       critique = review.critique;
       console.log(`[Fleet] ${mod.moduleId} review found issues (attempt ${attempt})`);
+      continue;
+    }
+
+    const deps = await ensureDependencies(latest);
+    if (!deps.ok) {
+      critique = deps.detail;
+      console.log(`[Fleet] ${mod.moduleId} dependency install failed (attempt ${attempt}): ${deps.detail.slice(0, 200)}`);
       continue;
     }
 
@@ -347,6 +388,17 @@ export async function runExecutionBackground(pipelineId: string, _toolsConfirmed
 
   const settled = new Map<string, "PASSED" | "FAILED">();
   const inFlight = new Map<string, Promise<void>>();
+
+  // Resume support: modules already PASSED in the persisted board (from a
+  // previous fleet run whose gate was reopened) keep their verdict — the
+  // fleet only builds what is not yet done.
+  for (const m of planModules) {
+    const entry = state.board?.modules.find((b) => b.moduleId === m.moduleId);
+    if (entry?.status === "PASSED") settled.set(m.moduleId, "PASSED");
+  }
+  if (settled.size > 0) {
+    console.log(`[Fleet] Resuming: ${settled.size}/${planModules.length} modules already PASSED`);
+  }
 
   const depsOk = (m: PlanModule) => (m.dependsOn || []).every((d) => settled.get(d) === "PASSED");
   const depsFailed = (m: PlanModule) => (m.dependsOn || []).some((d) => settled.get(d) === "FAILED");

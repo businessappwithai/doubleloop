@@ -208,12 +208,15 @@ export async function resolveGateDecision(input: GateDecisionInput): Promise<Gat
             architecturePlan: state.designDocs?.architecture?.markdown || state.plan?.architecturePlan || "",
             engineeringPlan: plan,
           };
+          // Preserve PASSED verdicts from a previous fleet run so approval
+          // after a partial failure resumes instead of rebuilding everything.
           state.board = {
-            modules: (plan.modules || []).map((m: any) => ({
-              moduleId: m.moduleId,
-              status: "PENDING",
-              attempts: 0,
-            })),
+            modules: (plan.modules || []).map((m: any) => {
+              const prev = state.board?.modules.find((b) => b.moduleId === m.moduleId);
+              return prev?.status === "PASSED"
+                ? prev
+                : { moduleId: m.moduleId, status: "PENDING", attempts: 0, ...(prev && (prev as any).failure ? { failure: (prev as any).failure } : {}) };
+            }),
           };
         }
       } catch (e: any) {
