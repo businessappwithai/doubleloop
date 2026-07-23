@@ -1,0 +1,31 @@
+{
+  "name": "quick-notes",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tanstack/react-start": "^1.0.0",
+    "@tanstack/react-router": "^1.0.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "zod": "^3.23.0",
+    "pg": "^8.11.0"
+  },
+  "devDependencies": {
+    "vite": "^7.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "typescript": "^5.3.0",
+    "vitest": "^2.0.0",
+    "@testing-library/react": "^14.1.0",
+    "@testing-library/jest-dom": "^6.1.0",
+    "jsdom": "^23.0.0",
+    "@types/pg": "^8.11.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/node": "^20.10.0"
+  }
+}
