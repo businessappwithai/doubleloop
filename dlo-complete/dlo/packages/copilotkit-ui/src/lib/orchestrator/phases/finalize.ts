@@ -753,6 +753,40 @@ export async function runTestingBackground(
 
 // ─── Deploy phase ────────────────────────────────────────────────────────────
 
+/**
+ * Bootstrap for TanStack Start's srvx build target: dist/server/server.js
+ * default-exports a fetch handler, so we serve it with srvx and handle the
+ * dist/client static assets ourselves.
+ */
+const SRVX_BOOTSTRAP = `// DLO deploy bootstrap for TanStack Start (srvx build target).
+import { serve } from "srvx";
+import { readFile, stat } from "node:fs/promises";
+import { join, extname } from "node:path";
+import server from "./dist/server/server.js";
+
+const CLIENT_DIR = join(process.cwd(), "dist/client");
+const TYPES = { ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".html": "text/html", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".json": "application/json", ".woff2": "font/woff2" };
+
+serve({
+  port: Number(process.env.PORT) || 3001,
+  async fetch(req) {
+    const url = new URL(req.url);
+    if (url.pathname !== "/" && !url.pathname.endsWith("/")) {
+      const filePath = join(CLIENT_DIR, url.pathname);
+      try {
+        const s = await stat(filePath);
+        if (s.isFile()) {
+          const body = await readFile(filePath);
+          return new Response(body, { headers: { "content-type": TYPES[extname(filePath)] || "application/octet-stream", "cache-control": "public, max-age=31536000" } });
+        }
+      } catch { /* fall through to SSR */ }
+    }
+    return server.fetch(req);
+  },
+});
+console.log("[DLO] app serving on :" + (Number(process.env.PORT) || 3001));
+`;
+
 export async function runDeployBackground(pipelineId: string, hasPermission: boolean): Promise<void> {
   let state = await getPipeline(pipelineId);
   if (!state) return;
@@ -827,18 +861,24 @@ export async function runDeployBackground(pipelineId: string, hasPermission: boo
       return;
     }
 
-    // TanStack Start production output is .output/server/index.mjs (nitro);
-    // classic Vite SPAs build to dist/.
+    // TanStack Start production output: dist/server/server.js (srvx, current)
+    // or .output/server/index.mjs (nitro, older). Classic Vite SPAs build a
+    // static dist/ with an index.html.
+    const srvxEntry = join(state.workspaceDir, "dist/server/server.js");
     const nitroEntry = join(state.workspaceDir, ".output/server/index.mjs");
     const distDir = join(state.workspaceDir, "dist");
-    const hasNitroBuild = existsSync(nitroEntry);
-    const hasProdBuild = hasNitroBuild || existsSync(distDir);
+    const hasSrvxBuild = existsSync(srvxEntry);
+    const hasNitroBuild = !hasSrvxBuild && existsSync(nitroEntry);
+    const hasStaticBuild = !hasSrvxBuild && !hasNitroBuild && existsSync(join(distDir, "index.html"));
+    const hasProdBuild = hasSrvxBuild || hasNitroBuild || hasStaticBuild;
     const port = launchCmd.port;
     const appUrl = `http://localhost:${port}`;
 
-    const deployCommands = hasNitroBuild
+    const deployCommands = hasSrvxBuild
+      ? [`cd ${state.workspaceDir}`, `PORT=${port} node .dlo-serve.mjs  # srvx bootstrap for dist/server/server.js`, `# Production app → ${appUrl}`]
+      : hasNitroBuild
       ? [`cd ${state.workspaceDir}`, `PORT=${port} node .output/server/index.mjs`, `# Production app → ${appUrl}`]
-      : hasProdBuild
+      : hasStaticBuild
       ? [`cd ${state.workspaceDir}`, `npx serve -s dist -p ${port}`, `# Production app → ${appUrl}`]
       : [`cd ${state.workspaceDir}`, `${launchCmd.cmd} ${launchCmd.args.join(" ")}`, `# Dev server → ${appUrl}`];
 
@@ -859,15 +899,22 @@ export async function runDeployBackground(pipelineId: string, hasPermission: boo
       return;
     }
 
-    if (hasNitroBuild) {
-      const child = spawn("node", [".output/server/index.mjs"], {
+    if (hasSrvxBuild) {
+      // dist/server/server.js is a fetch-handler module (srvx build target),
+      // not a self-starting server — write a bootstrap that serves it plus
+      // the dist/client static assets.
+      await writeFile(join(state.workspaceDir, ".dlo-serve.mjs"), SRVX_BOOTSTRAP, "utf-8");
+    }
+    if (hasSrvxBuild || hasNitroBuild) {
+      const entry = hasSrvxBuild ? ".dlo-serve.mjs" : ".output/server/index.mjs";
+      const child = spawn("node", [entry], {
         cwd: state.workspaceDir,
         env: { ...process.env, PORT: String(port), DATABASE_URL: state.dbConnectionString || "" },
         detached: true,
         stdio: "ignore",
       });
       child.unref();
-    } else if (hasProdBuild) {
+    } else if (hasStaticBuild) {
       const child = spawn("npx", ["serve", "-s", "dist", "-p", String(port)], {
         cwd: state.workspaceDir,
         env: process.env,
