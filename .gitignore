@@ -43,8 +43,5 @@ dlo-complete.zip
 # Generated per-pipeline Liam ERD viewer static sites
 dlo-complete/dlo/packages/copilotkit-ui/public/erd/
 
-# Generated per-pipeline app workspaces (runtime output of the build fleet)
-dlo-complete/dlo/packages/copilotkit-ui/workspaces/
-
 # TypeScript incremental build state
 *.tsbuildinfo

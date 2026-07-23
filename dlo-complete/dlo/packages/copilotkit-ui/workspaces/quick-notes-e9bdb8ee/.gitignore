@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+
+# TanStack Start build output and generated files
+.output
+.nitro
+.tanstack
+
+*.log
