@@ -88,13 +88,17 @@ export default function DesignerPage() {
       const payload = { pipelineId, modules: agentConfig, updatedAt: new Date().toISOString() };
       localStorage.setItem(`dlo-agent-design-${pipelineId}`, JSON.stringify(payload));
 
-      // Post as a context note to the pipeline so kernel can read it
-      const note = `[AgentDesign] ${JSON.stringify({ modules: agentConfig })}`;
-      await fetch(`/api/pipelines/${pipelineId}/context`, {
-        method: "POST",
+      // Save as first-class agentDesign — the build fleet reads this
+      // per-module (vendor/model) when dispatching subagents.
+      const res = await fetch(`/api/pipelines/${pipelineId}/agent-design`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note }),
+        body: JSON.stringify({ modules: agentConfig }),
       });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Save failed (${res.status})`);
+      }
 
       setSavedConfig({ ...agentConfig });
       setSaveStatus("saved");

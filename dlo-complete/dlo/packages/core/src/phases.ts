@@ -19,7 +19,12 @@ export const PIPELINE_PHASES = [
   "INIT",
   "RESEARCH_RUNNING",
   "GATE1_PENDING",
+  /** Legacy single-shot planning (pre-design-analyst pipelines). */
   "PLANNING_RUNNING",
+  /** Design Analyst: Claude Code plan mode → Architecture.md / Database.md / Implementation.md */
+  "DESIGN_RUNNING",
+  /** /plan-ceo-review pass over the three design documents. */
+  "CEO_REVIEW_RUNNING",
   "GATE2_PENDING",
   "EXECUTION_RUNNING",
   "PAUSED",

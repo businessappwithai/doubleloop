@@ -255,11 +255,12 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
     copilotModel: "gemini-1.5-pro",
     providers: {
       research: { apiKey: "", vendor: "gemini-deep-research" as const, model: "deep-research-preview-04-2026" as string },
-      planner: { apiKey: "", vendor: "claude-code" as const, model: "claude-haiku-4-5-20251001" as string },
+      planner: { apiKey: "", vendor: "claude-code" as const, model: "claude-sonnet-5" as string, auth: "api-key" as "api-key" | "subscription" },
       supervisor: { apiKey: "", vendor: "claude-code" as const, model: "claude-haiku-4-5-20251001" as string },
-      executor: { apiKey: "", vendor: "codewhale" as const, model: "deepseek-coder" as string, maxConcurrent: 8 },
-      harness: { apiKey: "", vendor: "pi" as const, model: "pi-default-model" as string, sdkPackage: "@earendil-works/pi-coding-agent" as const, subagentsExtension: "@gotgenes/pi-subagents" as const }
+      executor: { apiKey: "", vendor: "claude-code" as const, model: "claude-haiku-4-5-20251001" as string, maxConcurrent: 4 },
+      harness: { apiKey: "", vendor: "pi" as const, model: "pi-default-model" as string, sdkPackage: "@earendil-works/pi-coding-agent" as const, subagentsExtension: "@gotgenes/pi-subagents" as const, mode: "auto" as string }
     },
+    langflow: { url: "", apiKey: "" },
     budgets: { usd: 100, tokens: 10000000, wallClockMs: 3600000 }
   });
 
@@ -317,6 +318,7 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
             executor: { ...prev.providers.executor, ...(parsed.providers?.executor || {}) },
             harness: { ...prev.providers.harness, ...(parsed.providers?.harness || {}) },
           };
+          merged.langflow = { ...prev.langflow, ...(parsed.langflow || {}) };
           merged.budgets = { ...prev.budgets, ...(parsed.budgets || {}) };
           return merged;
         });
@@ -856,12 +858,40 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-semibold text-amber-200">
                             {store.pipelineStatus.activeGate.kind === "DOMAIN_DOCUMENT"
-                              ? "Review: Domain Document"
+                              ? "Review: Research Document"
+                              : store.pipelineStatus.activeGate.kind === "DESIGN_REVIEW"
+                              ? "Review: Design Documents (Architecture · Database · Implementation)"
                               : "Review: Tripartite Plan"}
                           </p>
                           <p className="text-xs text-amber-300/70">Approve to proceed · Steer to revise · Reject to fail</p>
+                          {(store.pipelineStatus.activeGate.kind === "DESIGN_REVIEW" || store.pipelineStatus.activeGate.kind === "DOMAIN_DOCUMENT") && (
+                            <a
+                              href={`/documents?pipeline=${store.activePipelineId}`}
+                              className="text-xs text-blue-300 underline hover:text-blue-200"
+                            >
+                              Open the Documents page to read, edit, and work through the CEO-review enhancements →
+                            </a>
+                          )}
                         </div>
                       </div>
+
+                      {store.pipelineStatus.activeGate.kind === "DESIGN_REVIEW" && (
+                        <div className="flex border-b border-amber-700/40">
+                          {["Architecture.md", "Database.md", "Implementation.md"].map((label, i) => (
+                            <button
+                              key={label}
+                              onClick={() => setGateExhibitTab(i)}
+                              className={`flex-1 px-2 py-1.5 text-xs font-medium transition ${
+                                gateExhibitTab === i
+                                  ? "bg-amber-800/40 text-amber-100"
+                                  : "text-amber-400 hover:text-amber-200"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
 
                       {store.pipelineStatus.activeGate.kind === "TRIPARTITE_PLAN" && (
                         <div className="flex border-b border-amber-700/40">
@@ -1289,8 +1319,29 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
 
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
-                  Anthropic API Key (Claude Code)
+                  Claude Code Auth
                 </label>
+                <select
+                  value={config.providers.planner.auth || "api-key"}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    providers: {
+                      ...config.providers,
+                      planner: { ...config.providers.planner, auth: e.target.value as "api-key" | "subscription" }
+                    }
+                  })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mb-2"
+                >
+                  <option value="subscription">Coding subscription plan (claude CLI login — no API key billed)</option>
+                  <option value="api-key">API key (ANTHROPIC_API_KEY)</option>
+                </select>
+                {config.providers.planner.auth === "subscription" ? (
+                  <p className="text-[11px] text-slate-500 mb-3">
+                    The server's <code className="bg-slate-800 px-1 rounded">claude</code> CLI must be logged in
+                    (run <code className="bg-slate-800 px-1 rounded">claude setup-token</code> on the host).
+                    ANTHROPIC_API_KEY is stripped from the agent environment.
+                  </p>
+                ) : (
                 <input
                   type="password"
                   placeholder="Defaults to process.env.ANTHROPIC_API_KEY"
@@ -1302,6 +1353,23 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
                       planner: { ...config.providers.planner, apiKey: e.target.value },
                       supervisor: { ...config.providers.supervisor, apiKey: e.target.value }
                     }
+                  })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mb-3"
+                />
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Langflow URL (subagent configuration)
+                </label>
+                <input
+                  type="text"
+                  placeholder="http://localhost:7860 — leave empty to use the built-in designer canvas"
+                  value={config.langflow?.url || ""}
+                  onChange={(e) => setConfig({
+                    ...config,
+                    langflow: { ...(config.langflow || { apiKey: "" }), url: e.target.value }
                   })}
                   className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition mb-3"
                 />

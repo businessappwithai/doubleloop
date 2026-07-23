@@ -38,15 +38,31 @@ This repository contains:
    Research     (plan +verify)    (executor)     (harness)
 ```
 
-## Five-Phase Pipeline
+## Pipeline
 
-1. **Research (Phase I)** — Gemini Deep Research gathers domain knowledge via background interactions
-2. **HITL Gate 1** — Human validates/steers/rejects the Domain Document
-3. **Planning (Phase II)** — Claude Code produces CEO, Architectural, and Engineering plans
-4. **HITL Gate 2** — Human approves/steers/rejects the plan (permission escalation happens here)
-5. **Execution + Verification (Phases III/IV)** — Double-loop: CodeWhale inner loop (LSP fixes), Claude Code outer loop (verification against exit clauses)
-6. **Finalization (Phase V)** — Linter, tester, builder subagents; final report
-7. **Report** — Cost breakdown, commit history, execution metrics
+1. **Research (Phase I)** — a pi.dev subagent ensemble (prompt-assembler +
+   architecture / domain / ERD researchers, all Gemini) produces one huge
+   `RESEARCH.md` in the new project directory. No Gemini key? A large textarea
+   accepts user-provided research instead.
+2. **HITL Gate 1** — approve, **edit the document in place**, or request
+   further research with additional inputs.
+3. **Design (Phase II)** — the Design Analyst (Claude Code in **plan mode**,
+   subscription-plan aware) authors three documents: `Architecture.md`
+   (frameworks — TanStack Start by default, central-orchestrator modular
+   design), `Database.md` (always PostgreSQL, full data models + DDL), and
+   `Implementation.md` (module DAG with machine-readable plan).
+4. **CEO Review (Phase II.b)** — `/plan-ceo-review` (gstack skill, with a
+   labeled built-in fallback) reviews each document; suggestions land in
+   `*.review.md` and in the `/documents` UI.
+5. **HITL Gate 2** — the `/documents` page: read each document, apply/edit/
+   dismiss each enhancement, approve per document, then approve all to build.
+6. **Execution (Phase III)** — the build fleet: many Claude Code subagents on
+   the cheaper model (claude-haiku) build modules **in parallel** along the
+   Implementation.md DAG. Per-module vendor/model configurable via
+   **Langflow** (or the built-in designer canvas).
+7. **Finalization (Phases IV/V)** — build → PostgreSQL provisioning
+   (Database.md DDL as migration fallback) → tests → deploy, with a Fixer
+   subagent auto-repairing build/test failures (up to 3 rounds).
 
 ## Key Features
 
