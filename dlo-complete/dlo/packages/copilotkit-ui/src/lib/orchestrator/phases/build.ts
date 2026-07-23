@@ -16,6 +16,8 @@
 
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import {
   type PipelineState,
   type AgentAssignment,
@@ -219,6 +221,29 @@ Otherwise list the specific errors that must be fixed (one per line).`,
   }
 }
 
+/**
+ * Make sure the workspace's npm dependencies are installed before exit
+ * clauses run — otherwise typecheck/build clauses fail with "cannot find
+ * module" no matter how good the generated code is, and retries fly blind.
+ * Idempotent: npm short-circuits quickly when node_modules is current.
+ */
+async function ensureDependencies(state: PipelineState): Promise<{ ok: boolean; detail: string }> {
+  if (!existsSync(join(state.workspaceDir, "package.json"))) return { ok: true, detail: "" };
+  try {
+    await execFileAsync("npm", ["install", "--prefer-offline", "--no-audit", "--no-fund"], {
+      cwd: state.workspaceDir,
+      timeout: 300_000,
+      env: { ...process.env },
+    });
+    return { ok: true, detail: "" };
+  } catch (e: any) {
+    return {
+      ok: false,
+      detail: `npm install failed: ${((e.stderr || "") + (e.stdout || "") || e.message).slice(-1200)}`,
+    };
+  }
+}
+
 /** Run a module's command exit clauses. Non-command kinds are skipped here. */
 async function runExitClauses(
   state: PipelineState,
@@ -283,6 +308,13 @@ async function runOneModule(pipelineId: string, mod: PlanModule): Promise<boolea
     if (!review.passed) {
       critique = review.critique;
       console.log(`[Fleet] ${mod.moduleId} review found issues (attempt ${attempt})`);
+      continue;
+    }
+
+    const deps = await ensureDependencies(latest);
+    if (!deps.ok) {
+      critique = deps.detail;
+      console.log(`[Fleet] ${mod.moduleId} dependency install failed (attempt ${attempt}): ${deps.detail.slice(0, 200)}`);
       continue;
     }
 
