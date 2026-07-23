@@ -337,15 +337,17 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
     }
   };
 
-  // Sync manualResearchMode when config changes (e.g. user saves a key in settings)
+  // Sync manualResearchMode when config changes (e.g. user saves a key in
+  // settings) or when a pipeline becomes active — an active pipeline always
+  // shows the status board, even in keyless (manual research) setups.
   useEffect(() => {
-    if (config.providers.research.apiKey && manualResearchMode && !pendingPipelineParams) {
+    if (manualResearchMode && !pendingPipelineParams && (config.providers.research.apiKey || store.pipelineStatus)) {
       setManualResearchMode(false);
-    } else if (!config.providers.research.apiKey && !store.pipelineStatus) {
+    } else if (!config.providers.research.apiKey && !store.pipelineStatus && !manualResearchMode) {
       setManualResearchMode(true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.providers.research.apiKey]);
+  }, [config.providers.research.apiKey, store.pipelineStatus]);
 
   const submitManualResearch = async () => {
     if (!manualResearch.trim()) return;
