@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { savePipeline, runResearchBackground, writeWorkspaceMarkdown } from "@/lib/pipeline-helper";
+import { savePipeline, runResearchBackground, saveDesignDoc } from "@/lib/pipeline-helper";
 
 export async function POST(request: Request) {
   try {
@@ -59,12 +59,14 @@ export async function POST(request: Request) {
     await savePipeline(pipeline as any);
 
     if (hasManualResearch) {
-      // Write DOMAIN.md immediately for manual-research path
-      await writeWorkspaceMarkdown(
-        resolvedWorkspaceDir,
-        "DOMAIN.md",
-        `# Domain Document — ${projectName}\n\n> Source: User-provided research\n> Created: ${now}\n\n${researchMarkdown}`
+      // Persist the pasted research as RESEARCH.md (+ DOMAIN.md mirror) in the
+      // new project directory, same as the research subagents would.
+      await saveDesignDoc(
+        pipeline as any,
+        "research",
+        `# Domain Research — ${projectName}\n\n> Source: User-provided research (no Gemini key)\n> Created: ${now}\n\n${researchMarkdown}`
       );
+      await savePipeline(pipeline as any);
     } else {
       runResearchBackground(pipelineId).catch((err) => {
         console.error(`Research phase failed for ${pipelineId}:`, err);
