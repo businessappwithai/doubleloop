@@ -40,6 +40,7 @@ export function WorkspaceViewer({ pipelineId, isRunning, onSteer }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [workspaceDir, setWorkspaceDir] = useState<string | null>(null);
   const [lineSelection, setLineSelection] = useState<LineSelection | null>(null);
   const [steerInstruction, setSteerInstruction] = useState("");
   const [steerSubmitting, setSteerSubmitting] = useState(false);
@@ -56,6 +57,7 @@ export function WorkspaceViewer({ pipelineId, isRunning, onSteer }: Props) {
         const data = await res.json();
         const incoming: WorkspaceFile[] = data.files || [];
         setFiles(incoming);
+        if (data.workspaceDir) setWorkspaceDir(data.workspaceDir);
         setLastRefresh(new Date());
         setSelected((prev) => {
           if (!prev && incoming.length > 0) return incoming[0]!.path;
@@ -165,6 +167,15 @@ export function WorkspaceViewer({ pipelineId, isRunning, onSteer }: Props) {
           </button>
         </div>
       </div>
+
+      {/* Workspace path bar */}
+      {workspaceDir && (
+        <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-950 border-b border-slate-800 flex-shrink-0">
+          <span className="text-[10px] text-slate-600 font-mono truncate" title={workspaceDir}>
+            {workspaceDir}
+          </span>
+        </div>
+      )}
 
       {/* Hint bar */}
       {files.length > 0 && onSteer && (

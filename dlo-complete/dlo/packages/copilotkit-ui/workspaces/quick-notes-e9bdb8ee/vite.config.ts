@@ -11,9 +11,8 @@ export default defineConfig({
   plugins: [tanstackStart(), react()],
   resolve: {
     dedupe: ["react", "react-dom"],
-    alias: {
-      react: path.resolve(dirname, "node_modules/react"),
-      "react-dom": path.resolve(dirname, "node_modules/react-dom"),
-    },
+  },
+  ssr: {
+    external: ["react", "react-dom"],
   },
 });
