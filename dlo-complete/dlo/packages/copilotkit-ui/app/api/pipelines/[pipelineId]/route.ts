@@ -3,10 +3,10 @@ import { getPipeline } from "@/lib/pipeline-helper";
 
 export async function GET(
   _request: Request,
-  { params }: { params: { pipelineId: string } }
+  { params }: { params: Promise<{ pipelineId: string }> }
 ) {
   try {
-    const { pipelineId } = params;
+    const { pipelineId } = await params;
 
     if (!pipelineId) {
       return NextResponse.json(

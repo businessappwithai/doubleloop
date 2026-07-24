@@ -1,19 +1,10 @@
 /**
  * orchestrator/phases/review.ts
- * Phase II.b — CEO review of the three design documents.
- *
- * A pi.dev subagent invokes Claude Code with the gstack skill
- * `/plan-ceo-review <doc>` (plan mode). If the gstack skill is not installed
- * on the host, a built-in CEO-review prompt with the same rubric runs instead
- * and the output is LABELED "built-in" — never a silent substitute.
+ * Phase II.b — CEO review of the three design documents using built-in prompt.
  *
  * Output per document: <Doc>.review.md on disk + structured suggestions in
  * state.reviews, then GATE2_PENDING (kind DESIGN_REVIEW).
  */
-
-import { join } from "node:path";
-import { access } from "node:fs/promises";
-import { homedir } from "node:os";
 import {
   type PipelineState,
   type DocumentReview,
@@ -26,22 +17,14 @@ import {
   pushPhaseHistory,
   writeWorkspaceMarkdown,
 } from "../state";
-import { spawnClaudeAgent, claudeAuthFromConfig } from "../subagents/claude";
+import { spawnClaudeAgent, claudeAuthFromConfig, claudePermissionModeFromConfig } from "../subagents/claude";
 import { getSubagentRunner } from "../subagents/pi";
+import { appendLog } from "../logStore";
 
 const REVIEW_TIMEOUT_MS = 10 * 60_000;
 
 type ReviewableDoc = Exclude<DesignDocKey, "research">;
 const REVIEWABLE_DOCS: ReviewableDoc[] = ["architecture", "database", "implementation"];
-
-async function gstackSkillAvailable(): Promise<boolean> {
-  try {
-    await access(join(homedir(), ".claude/skills/gstack/SKILL.md"));
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 const SUGGESTION_FORMAT = `Structure your review as a numbered list of suggestions, EXACTLY in this format
 (one block per suggestion, severity is one of high|medium|low):
@@ -64,13 +47,6 @@ ${SUGGESTION_FORMAT}
 The document under review:
 
 ${markdown}`;
-}
-
-function gstackReviewPrompt(doc: ReviewableDoc): string {
-  return `/plan-ceo-review ${DOC_FILENAMES[doc]}
-
-Review the plan document ${DOC_FILENAMES[doc]} in this workspace using the plan-ceo-review rubric.
-${SUGGESTION_FORMAT}`;
 }
 
 /** Parse "## Suggestion N — title [severity: x]" blocks into structured suggestions. */
@@ -100,7 +76,8 @@ export function parseSuggestions(rawMarkdown: string): ReviewSuggestion[] {
 /** Review a single document. Used by the phase and by the per-doc re-review API. */
 export async function reviewDocument(
   state: PipelineState,
-  doc: ReviewableDoc
+  doc: ReviewableDoc,
+  pipelineId?: string
 ): Promise<DocumentReview> {
   const markdown = state.designDocs?.[doc]?.markdown;
   if (!markdown) throw new Error(`Cannot review ${doc}: document not generated yet.`);
@@ -109,22 +86,22 @@ export async function reviewDocument(
     || state.config?.providers?.planner?.model
     || "claude-sonnet-5";
   const { auth, apiKey } = claudeAuthFromConfig(state.config);
-  const useGstack = await gstackSkillAvailable();
-
+  const permissionMode = claudePermissionModeFromConfig(state.config, "reviewer", "bypassPermissions");
+  const pluginDirs: string[] = state.config?.skills?.pluginDirs ?? [];
   const rawMarkdown = await spawnClaudeAgent({
-    prompt: useGstack
-      ? gstackReviewPrompt(doc)
-      : builtInReviewPrompt(doc, markdown, state.projectName),
+    prompt: builtInReviewPrompt(doc, markdown, state.projectName),
     model: reviewerModel,
     cwd: state.workspaceDir,
-    permissionMode: "plan",
+    permissionMode,
     auth,
     ...(apiKey ? { apiKey } : {}),
     timeoutMs: REVIEW_TIMEOUT_MS,
+    ...(pipelineId ? { pipelineId } : {}),
+    ...(pluginDirs.length ? { pluginDirs } : {}),
   });
 
   const review: DocumentReview = {
-    reviewer: useGstack ? "gstack/plan-ceo-review" : "built-in",
+    reviewer: "built-in",
     rawMarkdown,
     suggestions: parseSuggestions(rawMarkdown),
     reviewedAt: new Date().toISOString(),
@@ -144,13 +121,14 @@ export async function runCeoReviewBackground(pipelineId: string): Promise<void> 
 
   try {
     const runner = await getSubagentRunner(state.config);
-    console.log(`[CEO-Review] Reviewing 3 documents (runner=${runner.kind})`);
+    appendLog(pipelineId, `[CEO-Review] Starting review of 3 documents (runner=${runner.kind})`);
+    appendLog(pipelineId, `[CEO-Review] Reviewing Architecture.md, Database.md, Implementation.md in parallel…`);
 
     const results = await runner.runParallel(
       REVIEWABLE_DOCS.map((doc) => ({
         name: `ceo-reviewer:${doc}`,
         mission: `/plan-ceo-review ${DOC_FILENAMES[doc]}`,
-        run: () => reviewDocument(state, doc),
+        run: () => reviewDocument(state, doc, pipelineId),
       }))
     );
 

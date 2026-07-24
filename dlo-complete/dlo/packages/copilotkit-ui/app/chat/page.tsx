@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CopilotChat } from "@copilotkit/react-ui";
 import {
   useCopilotReadable,
@@ -16,9 +16,333 @@ import "@copilotkit/react-ui/styles.css";
 import { useDloStore } from "@/lib/store";
 import { createDloClient } from "@/lib/dlo-client";
 import { format } from "date-fns";
-import { Activity, AlertCircle, CheckCircle, Clock, Zap, Settings, X, Code2, Database, FlaskConical, Rocket, ExternalLink, ShieldCheck, RefreshCw, GitBranch } from "lucide-react";
+import { Activity, AlertCircle, CheckCircle, Clock, Zap, Settings, X, XCircle, Code2, Database, FlaskConical, Rocket, ExternalLink, ShieldCheck, RefreshCw, GitBranch } from "lucide-react";
 import { WorkspaceViewer } from "@/components/WorkspaceViewer";
 import { ErdPanel } from "@/components/ErdPanel";
+
+const RUNNING_PHASES = new Set([
+  "RESEARCH_RUNNING", "DESIGN_RUNNING", "CEO_REVIEW_RUNNING",
+  "EXECUTION_RUNNING", "BUILD_RUNNING", "DB_PROVISIONING_RUNNING",
+  "TESTING_RUNNING", "DEPLOY_RUNNING", "APP_LAUNCH_RUNNING",
+]);
+
+/** Live streaming log panel with stdin input box. */
+function LiveLogs({ pipelineId }: { pipelineId: string }) {
+  const [lines, setLines] = useState<string[]>([]);
+  const [open, setOpen] = useState(true);
+  const [inputText, setInputText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [hasRunningProcess, setHasRunningProcess] = useState(false);
+  const [sendMsg, setSendMsg] = useState<string | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!pipelineId) return;
+    setLines([]);
+    const es = new EventSource(`/api/pipelines/${pipelineId}/logs`);
+    es.onmessage = (e) => {
+      try {
+        const { line } = JSON.parse(e.data) as { line: string };
+        setLines((prev) => {
+          const next = [...prev, line];
+          return next.length > 500 ? next.slice(-500) : next;
+        });
+      } catch {}
+    };
+    return () => es.close();
+  }, [pipelineId]);
+
+  // Poll whether a subprocess is currently waiting for stdin input.
+  useEffect(() => {
+    if (!pipelineId) return;
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/pipelines/${pipelineId}/stdin`);
+        const data = await res.json();
+        setHasRunningProcess(data.running ?? false);
+      } catch {}
+    };
+    poll();
+    const t = setInterval(poll, 3000);
+    return () => clearInterval(t);
+  }, [pipelineId]);
+
+  useEffect(() => {
+    if (open) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [lines, open]);
+
+  const sendInput = async () => {
+    if (!inputText.trim() || !pipelineId) return;
+    setSending(true);
+    setSendMsg(null);
+    try {
+      const res = await fetch(`/api/pipelines/${pipelineId}/stdin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: inputText }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setLines((prev) => [...prev, `> ${inputText}`]);
+        setInputText("");
+        setSendMsg(null);
+      } else {
+        setSendMsg(data.error || "Failed to send");
+      }
+    } catch (e: any) {
+      setSendMsg(e.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (lines.length === 0 && !hasRunningProcess) return null;
+
+  return (
+    <div className="mt-3 rounded border border-slate-700 overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-left"
+      >
+        <span className="text-[11px] font-mono text-slate-400 flex items-center gap-1.5">
+          <Activity className="w-3 h-3 text-blue-400" />
+          Live output ({lines.length} lines)
+          {hasRunningProcess && (
+            <span className="text-[10px] text-emerald-400 ml-1">● subprocess running</span>
+          )}
+        </span>
+        <span className="text-[10px] text-slate-600">{open ? "▲ hide" : "▼ show"}</span>
+      </button>
+
+      {open && (
+        <>
+          <div className="bg-slate-950 max-h-56 overflow-y-auto p-3 font-mono text-[11px] leading-relaxed">
+            {lines.map((line, i) => (
+              <div
+                key={i}
+                className={`whitespace-pre-wrap break-all ${
+                  line.startsWith(">") ? "text-emerald-400" :
+                  line.startsWith("[") ? "text-blue-300" :
+                  line.toLowerCase().includes("error") || line.toLowerCase().includes("failed") ? "text-red-300" :
+                  line.toLowerCase().includes("warn") ? "text-amber-300" :
+                  line.startsWith("{") || line.startsWith("}") ? "text-slate-600" :
+                  "text-slate-300"
+                }`}
+              >
+                {line}
+              </div>
+            ))}
+            <div ref={bottomRef} />
+          </div>
+
+          {/* Stdin input — shown when a process is running (for permission prompts & interactive input) */}
+          {hasRunningProcess && (
+            <div className="border-t border-slate-700 bg-slate-900 p-2">
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-[10px] text-amber-400 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  Subprocess awaiting input — reply to permission prompts or provide context
+                </p>
+                {/* Quick-approve buttons for common permission responses */}
+                <div className="flex gap-1">
+                  {["y", "1", "n"].map((quick) => (
+                    <button
+                      key={quick}
+                      onClick={async () => {
+                        await fetch(`/api/pipelines/${pipelineId}/stdin`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ text: quick }),
+                        });
+                      }}
+                      className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                        quick === "y" ? "border-emerald-700 text-emerald-400 hover:bg-emerald-900" :
+                        quick === "n" ? "border-red-800 text-red-400 hover:bg-red-950" :
+                        "border-slate-700 text-slate-400 hover:bg-slate-800"
+                      }`}
+                    >
+                      {quick}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-1.5">
+                <input
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendInput(); } }}
+                  placeholder="Type response or select quick-reply above…"
+                  className="flex-1 bg-slate-950 border border-slate-600 rounded px-2 py-1 text-xs font-mono text-white placeholder-slate-600 focus:outline-none focus:border-blue-500"
+                />
+                <button
+                  onClick={sendInput}
+                  disabled={sending || !inputText.trim()}
+                  className="px-3 py-1 rounded text-xs bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white"
+                >
+                  {sending ? "…" : "Send"}
+                </button>
+              </div>
+              {sendMsg && (
+                <p className="text-[10px] text-red-300 mt-1">{sendMsg}</p>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+const PHASE_LABELS: Record<string, string> = {
+  RESEARCH_RUNNING: "Running research agent…",
+  DESIGN_RUNNING: "Running Design Analyst (Architecture · Database · Implementation)…",
+  CEO_REVIEW_RUNNING: "Running CEO review of design documents…",
+  EXECUTION_RUNNING: "Building modules (fleet running)…",
+  BUILD_RUNNING: "Running build…",
+  DB_PROVISIONING_RUNNING: "Provisioning database…",
+  TESTING_RUNNING: "Running tests…",
+  DEPLOY_RUNNING: "Deploying…",
+  APP_LAUNCH_RUNNING: "Launching app…",
+};
+
+const STUCK_THRESHOLD_MS = 10 * 60_000; // 10 minutes
+
+function PhaseIndicator({
+  status,
+  pipelineId,
+  onResume,
+}: {
+  status: any;
+  pipelineId: string;
+  onResume: () => void;
+}) {
+  const [now, setNow] = useState(Date.now());
+  const [resuming, setResuming] = useState(false);
+  const [resumeMsg, setResumeMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(t);
+  }, []);
+
+  const phase: string = status?.phase ?? "";
+  const isRunning = RUNNING_PHASES.has(phase);
+  const lastTransition = status?.lastTransitionAt ? new Date(status.lastTransitionAt).getTime() : null;
+  const elapsedMs = lastTransition ? now - lastTransition : 0;
+  const isStuck = isRunning && elapsedMs > STUCK_THRESHOLD_MS;
+  const elapsedLabel = elapsedMs > 0 ? (() => {
+    const s = Math.floor(elapsedMs / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m ${s % 60}s`;
+    return `${Math.floor(m / 60)}h ${m % 60}m`;
+  })() : null;
+
+  const isFailed = phase === "FAILED";
+  const isAborted = phase === "ABORTED";
+  const pipelineError = status?.error as string | undefined;
+  const canSkipCeoReview = phase === "CEO_REVIEW_RUNNING";
+
+  const handleResume = async (action: "retry" | "skip") => {
+    if (!pipelineId) return;
+    setResuming(true);
+    setResumeMsg(null);
+    try {
+      const res = await fetch(`/api/pipelines/${pipelineId}/resume`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setResumeMsg(`Error: ${data.error}`);
+      } else {
+        setResumeMsg(action === "skip" ? "Skipped — advancing to Gate 2" : "Restarted — check status in a moment");
+        setTimeout(() => { setResumeMsg(null); onResume(); }, 2000);
+      }
+    } catch (e: any) {
+      setResumeMsg(`Error: ${e.message}`);
+    } finally {
+      setResuming(false);
+    }
+  };
+
+  const borderColor = isFailed ? "border-red-500" : isAborted ? "border-orange-500" : isStuck ? "border-amber-500" : isRunning ? "border-blue-500" : "border-slate-600";
+  const textColor = isFailed ? "text-red-400" : isAborted ? "text-orange-400" : isStuck ? "text-amber-300" : isRunning ? "text-blue-300" : "text-slate-300";
+
+  return (
+    <div>
+      <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Phase</p>
+      <div className={`bg-slate-900 rounded px-3 py-2 border-l-4 ${borderColor}`}>
+        <div className="flex items-center gap-2">
+          {isRunning && !isStuck && <RefreshCw className="w-3.5 h-3.5 text-blue-400 animate-spin flex-shrink-0" />}
+          {isStuck && <AlertCircle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />}
+          {isFailed && <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />}
+          {isAborted && <AlertCircle className="w-3.5 h-3.5 text-orange-400 flex-shrink-0" />}
+          <p className={`text-sm font-semibold ${textColor}`}>{phase}</p>
+          {elapsedLabel && (
+            <span className={`text-[10px] ml-auto ${isStuck ? "text-amber-400 font-semibold" : "text-slate-500"}`}>
+              {elapsedLabel}
+            </span>
+          )}
+        </div>
+
+        {PHASE_LABELS[phase] && !isStuck && (
+          <p className="text-[11px] text-slate-500 mt-1">{PHASE_LABELS[phase]}</p>
+        )}
+
+        {isStuck && (
+          <p className="text-[11px] text-amber-400 mt-1">
+            Phase has been running for {elapsedLabel} without progress — it may be stuck.
+          </p>
+        )}
+
+        {(pipelineError) && (
+          <p className="text-[11px] text-red-300 mt-1.5 break-words font-mono bg-red-950/40 rounded px-2 py-1">
+            {pipelineError}
+          </p>
+        )}
+
+        {resumeMsg && (
+          <p className={`text-[11px] mt-1.5 ${resumeMsg.startsWith("Error") ? "text-red-300" : "text-emerald-300"}`}>
+            {resumeMsg}
+          </p>
+        )}
+
+        {isAborted && (
+          <p className="text-[11px] text-orange-400 mt-1">
+            Pipeline was aborted — click Retry to resume from the last running phase.
+          </p>
+        )}
+
+        {(isStuck || isFailed || isAborted) && (isRunning || isFailed || isAborted) && (
+          <div className="flex gap-2 mt-2">
+            <button
+              onClick={() => handleResume("retry")}
+              disabled={resuming}
+              className="flex items-center gap-1 px-2 py-1 rounded text-[10px] bg-blue-800 hover:bg-blue-700 disabled:opacity-50 text-white"
+            >
+              <RefreshCw className={`w-3 h-3 ${resuming ? "animate-spin" : ""}`} />
+              Retry
+            </button>
+            {canSkipCeoReview && (
+              <button
+                onClick={() => handleResume("skip")}
+                disabled={resuming}
+                className="flex items-center gap-1 px-2 py-1 rounded text-[10px] bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-slate-200"
+                title="Skip CEO review and advance to Gate 2"
+              >
+                Skip CEO Review
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {isRunning && <LiveLogs pipelineId={pipelineId} />}
+    </div>
+  );
+}
 
 /**
  * Registers CopilotKit actions/readables. Only mounted when a Gemini key is present
@@ -233,6 +557,9 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
   const [showSettings, setShowSettings] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResults, setTestResults] = useState<any>(null);
+  const [skillsData, setSkillsData] = useState<{ skills: any[]; gstack: any } | null>(null);
+  const [skillsLoading, setSkillsLoading] = useState(false);
+  const [skillsAction, setSkillsAction] = useState<string | null>(null);
   const [manualResearchMode, setManualResearchMode] = useState(false);
   const [pendingPipelineParams, setPendingPipelineParams] = useState<{
     projectName: string;
@@ -255,13 +582,15 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
     copilotModel: "gemini-1.5-pro",
     providers: {
       research: { apiKey: "", vendor: "gemini-deep-research" as const, model: "deep-research-preview-04-2026" as string },
-      planner: { apiKey: "", vendor: "claude-code" as const, model: "claude-sonnet-5" as string, auth: "api-key" as "api-key" | "subscription" },
+      planner: { apiKey: "", vendor: "claude-code" as const, model: "claude-sonnet-5" as string, auth: "api-key" as "api-key" | "subscription", permissionMode: "bypassPermissions" as string },
+      reviewer: { apiKey: "", vendor: "claude-code" as const, model: "" as string, permissionMode: "bypassPermissions" as string },
       supervisor: { apiKey: "", vendor: "claude-code" as const, model: "claude-haiku-4-5-20251001" as string },
-      executor: { apiKey: "", vendor: "claude-code" as const, model: "claude-haiku-4-5-20251001" as string, maxConcurrent: 4 },
+      executor: { apiKey: "", vendor: "claude-code" as const, model: "claude-haiku-4-5-20251001" as string, maxConcurrent: 4, permissionMode: "acceptEdits" as string },
       harness: { apiKey: "", vendor: "pi" as const, model: "pi-default-model" as string, sdkPackage: "@earendil-works/pi-coding-agent" as const, subagentsExtension: "@gotgenes/pi-subagents" as const, mode: "auto" as string }
     },
     langflow: { url: "", apiKey: "" },
-    budgets: { usd: 100, tokens: 10000000, wallClockMs: 3600000 }
+    budgets: { usd: 100, tokens: 10000000, wallClockMs: 3600000 },
+    skills: { pluginDirs: [] as string[] },
   });
 
   const runConfigTest = async (currentConfig: typeof config) => {
@@ -293,6 +622,12 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
     setIsConnected(true);
   }, [daemonUrl, setClient]);
 
+  // Fetch skills status on mount
+  useEffect(() => {
+    fetchSkills();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Resume pipeline from ?pipeline=<id> URL param or localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -314,12 +649,14 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
           merged.providers = {
             research: { ...prev.providers.research, ...(parsed.providers?.research || {}) },
             planner: { ...prev.providers.planner, ...(parsed.providers?.planner || {}) },
+            reviewer: { ...prev.providers.reviewer, ...(parsed.providers?.reviewer || {}) },
             supervisor: { ...prev.providers.supervisor, ...(parsed.providers?.supervisor || {}) },
             executor: { ...prev.providers.executor, ...(parsed.providers?.executor || {}) },
             harness: { ...prev.providers.harness, ...(parsed.providers?.harness || {}) },
           };
           merged.langflow = { ...prev.langflow, ...(parsed.langflow || {}) };
           merged.budgets = { ...prev.budgets, ...(parsed.budgets || {}) };
+          merged.skills = { ...prev.skills, ...(parsed.skills || {}) };
           return merged;
         });
       } catch (e) {
@@ -335,6 +672,33 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
     if (onConfigSave) {
       onConfigSave();
     }
+  };
+
+  const fetchSkills = async () => {
+    setSkillsLoading(true);
+    try {
+      const res = await fetch("/api/skills");
+      const data = await res.json();
+      setSkillsData(data);
+    } catch {}
+    setSkillsLoading(false);
+  };
+
+  const runSkillsAction = async (action: string) => {
+    setSkillsAction(action);
+    try {
+      const res = await fetch("/api/skills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json();
+      if (data.ok) await fetchSkills();
+      else console.error("Skill action failed:", data.message);
+    } catch (e) {
+      console.error("Skill action error:", e);
+    }
+    setSkillsAction(null);
   };
 
   // Sync manualResearchMode when config changes (e.g. user saves a key in
@@ -517,6 +881,25 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
               </button>{" "}
               or set <code className="font-mono text-xs bg-amber-800/60 px-1 rounded">GEMINI_API_KEY</code> in your environment.
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* Gstack missing banner */}
+      {skillsData && !skillsData.gstack.installed && (
+        <div className="bg-violet-900/50 border-b border-violet-700 px-4 py-2">
+          <div className="max-w-7xl mx-auto flex items-center gap-2 text-violet-200 text-sm">
+            <Zap className="w-4 h-4 flex-shrink-0 text-violet-300" />
+            <span className="flex-1">
+              <strong>gstack skills not installed</strong> — CEO review, QA, design review and other AI skills are unavailable.
+            </span>
+            <button
+              onClick={() => runSkillsAction("install-gstack")}
+              disabled={!!skillsAction}
+              className="flex items-center gap-1 px-3 py-1 rounded text-xs bg-violet-700 hover:bg-violet-600 disabled:opacity-50 text-white font-medium"
+            >
+              {skillsAction === "install-gstack" ? <><RefreshCw className="w-3 h-3 animate-spin" /> Installing…</> : "Install gstack"}
+            </button>
           </div>
         </div>
       )}
@@ -707,20 +1090,12 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
                     </p>
                   </div>
 
-                  {/* Phase indicator */}
-                  <div>
-                    <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Phase</p>
-                    <div className={`bg-slate-900 rounded px-3 py-2 border-l-4 ${store.pipelineStatus.phase === "FAILED" ? "border-red-500" : "border-blue-500"}`}>
-                      <p className={`text-sm font-semibold ${store.pipelineStatus.phase === "FAILED" ? "text-red-400" : "text-blue-300"}`}>
-                        {store.pipelineStatus.phase}
-                      </p>
-                      {store.pipelineStatus.phase === "FAILED" && (store.pipelineStatus as any).error && (
-                        <p className="text-xs text-red-200 mt-1 break-words font-mono">
-                          {(store.pipelineStatus as any).error}
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                  {/* Phase indicator with elapsed time + stuck detection */}
+                  <PhaseIndicator
+                    status={store.pipelineStatus}
+                    pipelineId={store.activePipelineId ?? ""}
+                    onResume={() => store.loadPipeline(store.activePipelineId as any)}
+                  />
 
                   {/* Phase history timeline */}
                   {((store.pipelineStatus as any).phaseHistory as Array<{phase: string; timestamp: string}> | undefined)?.length ? (
@@ -992,50 +1367,128 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
                   )}
 
                   {/* Module board */}
-                  {store.pipelineStatus.board && (
-                    <div>
-                      <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Modules</p>
-                      <div className="space-y-1.5">
-                        {store.pipelineStatus.board.modules.slice(0, 5).map((mod) => {
-                          const planMod = (store.pipelineStatus as any).plan?.engineeringPlan?.modules?.find(
-                            (m: any) => m.moduleId === mod.moduleId
-                          );
-                          return (
-                            <div
-                              key={mod.moduleId}
-                              className="bg-slate-900 rounded px-2 py-1.5 border border-slate-700/50"
-                            >
-                              <div className="flex items-center gap-2 text-xs">
-                                {mod.status === "PASSED" ? (
-                                  <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
-                                ) : mod.status === "EXECUTING" ? (
-                                  <Activity className="w-4 h-4 text-blue-400 flex-shrink-0 animate-spin" />
-                                ) : mod.status === "REJECTED" ? (
-                                  <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-                                ) : (
-                                  <Clock className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                                )}
-                                <span className="text-slate-200 font-medium truncate">
-                                  {planMod?.title || mod.moduleId}
-                                </span>
-                                <span className="text-slate-500 ml-auto flex-shrink-0">×{mod.attempts}</span>
-                              </div>
-                              {planMod?.touches?.length > 0 && (
-                                <div className="mt-1 ml-6 text-xs text-slate-500 truncate">
-                                  {(planMod.touches as string[]).slice(0, 2).join(" · ")}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                        {(store.pipelineStatus.board.modules.length || 0) > 5 && (
-                          <p className="text-xs text-slate-500 px-2 py-1">
-                            +{store.pipelineStatus.board.modules.length - 5} more
+                  {store.pipelineStatus.board && (() => {
+                    const mods = store.pipelineStatus.board.modules;
+                    const planMods: any[] = (store.pipelineStatus as any).plan?.engineeringPlan?.modules ?? [];
+                    const nPassed = mods.filter((m) => m.status === "PASSED").length;
+                    const nFailed = mods.filter((m) => m.status === "FAILED" || m.status === "BLOCKED").length;
+                    const nExec = mods.filter((m) => m.status === "EXECUTING").length;
+                    const nPending = mods.filter((m) => m.status === "PENDING").length;
+                    const total = mods.length;
+                    const pct = total > 0 ? Math.round((nPassed / total) * 100) : 0;
+                    return (
+                      <div>
+                        {/* Header + progress */}
+                        <div className="flex items-center justify-between mb-1.5">
+                          <p className="text-xs text-slate-400 uppercase tracking-wide">
+                            Modules
                           </p>
-                        )}
+                          <span className="text-[10px] text-slate-500">
+                            {nPassed}/{total} done
+                          </span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-800 rounded-full mb-2 overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{
+                              width: `${pct}%`,
+                              background: nFailed > 0 ? "#ef4444" : "#22c55e",
+                            }}
+                          />
+                        </div>
+                        {/* Stats row */}
+                        <div className="flex gap-3 mb-2 text-[10px]">
+                          {nExec > 0 && <span className="text-blue-400">{nExec} executing</span>}
+                          {nPassed > 0 && <span className="text-green-400">{nPassed} passed</span>}
+                          {nFailed > 0 && <span className="text-red-400">{nFailed} failed/blocked</span>}
+                          {nPending > 0 && <span className="text-slate-500">{nPending} pending</span>}
+                        </div>
+                        {/* Module rows — all visible, scrollable */}
+                        <div className="space-y-1 max-h-72 overflow-y-auto pr-0.5">
+                          {mods.map((mod) => {
+                            const planMod = planMods.find((m: any) => m.moduleId === mod.moduleId);
+                            const title = planMod?.title || mod.moduleId;
+                            const failure = (mod as any).failure as string | undefined;
+                            const touches: string[] = planMod?.touches ?? [];
+                            const deps: string[] = planMod?.dependsOn ?? [];
+                            const depTitles = deps.map((d: string) => {
+                              const pm = planMods.find((m: any) => m.moduleId === d);
+                              return pm?.title || d;
+                            });
+
+                            const isFailed = mod.status === "FAILED" || mod.status === "BLOCKED";
+                            const isExec = mod.status === "EXECUTING";
+                            const isPassed = mod.status === "PASSED";
+
+                            const borderCls = isFailed
+                              ? "border-red-700/60 bg-red-950/20"
+                              : isExec
+                              ? "border-blue-600/40 bg-blue-950/20"
+                              : isPassed
+                              ? "border-green-800/40 bg-green-950/10"
+                              : "border-slate-700/40";
+
+                            return (
+                              <div
+                                key={mod.moduleId}
+                                className={`rounded px-2 py-1.5 border ${borderCls}`}
+                              >
+                                <div className="flex items-center gap-2 text-xs">
+                                  {isPassed ? (
+                                    <CheckCircle className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
+                                  ) : isExec ? (
+                                    <Activity className="w-3.5 h-3.5 text-blue-400 flex-shrink-0 animate-spin" />
+                                  ) : mod.status === "FAILED" ? (
+                                    <XCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                                  ) : mod.status === "BLOCKED" ? (
+                                    <AlertCircle className="w-3.5 h-3.5 text-orange-400 flex-shrink-0" />
+                                  ) : (
+                                    <Clock className="w-3.5 h-3.5 text-slate-600 flex-shrink-0" />
+                                  )}
+                                  <span className={`font-medium truncate flex-1 ${isFailed ? "text-red-200" : isExec ? "text-blue-200" : isPassed ? "text-green-200" : "text-slate-400"}`}>
+                                    {title}
+                                  </span>
+                                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    {mod.attempts > 0 && (
+                                      <span className={`text-[10px] ${mod.attempts > 1 ? "text-amber-400" : "text-slate-600"}`}>
+                                        ×{mod.attempts}
+                                      </span>
+                                    )}
+                                    <span className={`text-[9px] px-1 py-0.5 rounded font-mono ${
+                                      isPassed ? "bg-green-900/60 text-green-400"
+                                      : isExec ? "bg-blue-900/60 text-blue-400"
+                                      : isFailed ? "bg-red-900/60 text-red-400"
+                                      : "bg-slate-800 text-slate-500"
+                                    }`}>
+                                      {mod.status}
+                                    </span>
+                                  </div>
+                                </div>
+                                {/* Failure / block reason */}
+                                {failure && (
+                                  <div className="mt-1 ml-5 text-[10px] text-red-300/80 font-mono bg-red-950/30 rounded px-1.5 py-1 break-words leading-snug">
+                                    {failure.slice(0, 400)}{failure.length > 400 ? "…" : ""}
+                                  </div>
+                                )}
+                                {/* Deps (only if pending/blocked and has deps) */}
+                                {depTitles.length > 0 && !isPassed && !isExec && (
+                                  <div className="mt-0.5 ml-5 text-[10px] text-slate-600">
+                                    needs: {depTitles.join(" → ")}
+                                  </div>
+                                )}
+                                {/* Files touched */}
+                                {touches.length > 0 && (
+                                  <div className="mt-0.5 ml-5 text-[10px] text-slate-600 truncate">
+                                    {touches.slice(0, 3).join(" · ")}{touches.length > 3 ? ` +${touches.length - 3}` : ""}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {/* Test Results */}
                   {(store.pipelineStatus as any).testResults && (
@@ -1653,6 +2106,158 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
                       budgets: { ...config.budgets, usd: parseFloat(e.target.value) || 100 }
                     })}
                     className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-blue-500 transition"
+                  />
+                </div>
+              </div>
+
+              {/* Permission Modes section */}
+              <div className="border-t border-slate-700 pt-4">
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
+                  Permission Modes
+                </label>
+                <p className="text-[11px] text-slate-500 mb-3">
+                  Controls what the claude subprocess is allowed to do without asking.
+                  When NOT set to <code className="font-mono text-[10px]">bypassPermissions</code>, the
+                  <strong className="text-slate-300"> Live Logs</strong> input box lets you approve
+                  or deny each prompt in real time.
+                </p>
+
+                {/* Planner + Reviewer share the same mode */}
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">
+                      Planner / Reviewer
+                    </label>
+                    <select
+                      value={config.providers.planner.permissionMode ?? "bypassPermissions"}
+                      onChange={(e) => setConfig({
+                        ...config,
+                        providers: {
+                          ...config.providers,
+                          planner: { ...config.providers.planner, permissionMode: e.target.value },
+                          reviewer: { ...config.providers.reviewer, permissionMode: e.target.value },
+                        },
+                      })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 transition"
+                    >
+                      <option value="bypassPermissions">bypassPermissions — fully autonomous</option>
+                      <option value="acceptEdits">acceptEdits — approve file edits</option>
+                      <option value="default">default — approve all writes</option>
+                      <option value="plan">plan — read-only (no writes)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">
+                      Executor / Builder
+                    </label>
+                    <select
+                      value={config.providers.executor.permissionMode ?? "acceptEdits"}
+                      onChange={(e) => setConfig({
+                        ...config,
+                        providers: {
+                          ...config.providers,
+                          executor: { ...config.providers.executor, permissionMode: e.target.value },
+                        },
+                      })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 transition"
+                    >
+                      <option value="bypassPermissions">bypassPermissions — fully autonomous</option>
+                      <option value="acceptEdits">acceptEdits — approve file edits</option>
+                      <option value="default">default — approve all writes</option>
+                      <option value="plan">plan — read-only (no writes)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Skills section */}
+              <div className="border-t border-slate-700 pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                    Claude Code Skills
+                  </label>
+                  <button
+                    onClick={fetchSkills}
+                    disabled={skillsLoading}
+                    className="text-[10px] text-slate-500 hover:text-slate-300 flex items-center gap-0.5"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${skillsLoading ? "animate-spin" : ""}`} /> Refresh
+                  </button>
+                </div>
+
+                {/* gstack status */}
+                {skillsData ? (
+                  <div className="bg-slate-950 rounded border border-slate-800 p-3 mb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${skillsData.gstack.installed ? "bg-emerald-400" : "bg-red-400"}`} />
+                        <span className="text-xs text-slate-300 font-semibold">gstack</span>
+                        {skillsData.gstack.version && (
+                          <span className="text-[10px] text-slate-500">v{skillsData.gstack.version}</span>
+                        )}
+                      </div>
+                      {skillsData.gstack.installed ? (
+                        <button
+                          onClick={() => runSkillsAction("upgrade-gstack")}
+                          disabled={!!skillsAction}
+                          className="text-[10px] px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 flex items-center gap-1"
+                        >
+                          {skillsAction === "upgrade-gstack" ? <RefreshCw className="w-2.5 h-2.5 animate-spin" /> : null}
+                          Upgrade
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => runSkillsAction("install-gstack")}
+                          disabled={!!skillsAction}
+                          className="text-[10px] px-2 py-0.5 rounded bg-violet-700 hover:bg-violet-600 text-white flex items-center gap-1"
+                        >
+                          {skillsAction === "install-gstack" ? <RefreshCw className="w-2.5 h-2.5 animate-spin" /> : null}
+                          Install
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      {skillsData.gstack.installed
+                        ? `${skillsData.skills.length} skills loaded from ~/.claude/skills/`
+                        : "Not installed — plan-ceo-review, QA, design-review and other skills unavailable"}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-500 mb-3">Loading skills…</p>
+                )}
+
+                {/* Installed skills list */}
+                {skillsData && skillsData.skills.length > 0 && (
+                  <details className="mb-3">
+                    <summary className="text-[11px] text-slate-400 cursor-pointer hover:text-slate-200 mb-1">
+                      Show all {skillsData.skills.length} installed skills
+                    </summary>
+                    <div className="mt-2 max-h-32 overflow-y-auto bg-slate-950 rounded border border-slate-800 p-2 grid grid-cols-2 gap-x-2 gap-y-0.5">
+                      {skillsData.skills.map((s: any) => (
+                        <div key={s.name} className="flex items-center gap-1 text-[10px] text-slate-400">
+                          <span className="text-emerald-500">✓</span>
+                          <span className="font-mono">{s.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+
+                {/* Custom plugin dirs */}
+                <div>
+                  <label className="block text-[11px] text-slate-400 mb-1">
+                    Extra skill dirs for subagents (one per line, passed via <code className="font-mono text-[10px]">--plugin-dir</code>)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={(config.skills?.pluginDirs ?? []).join("\n")}
+                    onChange={(e) => setConfig({
+                      ...config,
+                      skills: { ...(config.skills ?? {}), pluginDirs: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) },
+                    })}
+                    placeholder="/path/to/my-skill"
+                    className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-blue-500 transition resize-none"
                   />
                 </div>
               </div>

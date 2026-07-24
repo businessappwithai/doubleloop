@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/prebuild.mjs",
     "dev": "next dev -p ${PORT:-8090}",
+    "prebuild": "node scripts/prebuild.mjs",
     "build": "next build",
     "start": "next start -p ${PORT:-8090}",
     "lint": "eslint .",

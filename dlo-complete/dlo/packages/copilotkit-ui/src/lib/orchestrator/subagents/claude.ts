@@ -10,9 +10,11 @@
 
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
+import { appendLog } from "../logStore";
+import { registerProcess, unregisterProcess } from "../processRegistry";
 
 export type ClaudeAuthMode = "subscription" | "api-key";
-export type ClaudePermissionMode = "plan" | "acceptEdits" | "default";
+export type ClaudePermissionMode = "plan" | "bypassPermissions" | "acceptEdits" | "default";
 
 export interface ClaudeAgentOptions {
   prompt: string;
@@ -22,6 +24,10 @@ export interface ClaudeAgentOptions {
   auth?: ClaudeAuthMode;
   apiKey?: string;
   timeoutMs?: number;
+  /** When set, stdout/stderr are streamed to the in-process log store. */
+  pipelineId?: string;
+  /** Extra skill/plugin directories loaded for this invocation via --plugin-dir. */
+  pluginDirs?: string[];
 }
 
 /** Resolve the auth mode for a pipeline config (providers.planner.auth). */
@@ -32,6 +38,20 @@ export function claudeAuthFromConfig(config: any): { auth: ClaudeAuthMode; apiKe
   return auth === "subscription" ? { auth } : { auth, ...(apiKey ? { apiKey } : {}) };
 }
 
+/**
+ * Resolve the permission mode for a specific provider from the pipeline config.
+ * Falls back to the provided default if the config doesn't specify one.
+ */
+export function claudePermissionModeFromConfig(
+  config: any,
+  provider: "planner" | "reviewer" | "executor",
+  fallback: ClaudePermissionMode = "bypassPermissions"
+): ClaudePermissionMode {
+  const configured = config?.providers?.[provider]?.permissionMode;
+  const valid: ClaudePermissionMode[] = ["plan", "bypassPermissions", "acceptEdits", "default"];
+  return valid.includes(configured) ? (configured as ClaudePermissionMode) : fallback;
+}
+
 export async function spawnClaudeAgent(opts: ClaudeAgentOptions): Promise<string> {
   const cwd = opts.cwd || process.cwd();
   await mkdir(cwd, { recursive: true });
@@ -39,6 +59,9 @@ export async function spawnClaudeAgent(opts: ClaudeAgentOptions): Promise<string
   const args = ["-p", opts.prompt, "--model", opts.model, "--output-format", "json"];
   if (opts.permissionMode && opts.permissionMode !== "default") {
     args.push("--permission-mode", opts.permissionMode);
+  }
+  for (const dir of opts.pluginDirs ?? []) {
+    args.push("--plugin-dir", dir);
   }
 
   const env: NodeJS.ProcessEnv = { ...process.env };
@@ -50,26 +73,50 @@ export async function spawnClaudeAgent(opts: ClaudeAgentOptions): Promise<string
   }
 
   return new Promise((resolve, reject) => {
-    const child = spawn("claude", args, { env, cwd });
+    const child = spawn("claude", args, { env, cwd, stdio: ["pipe", "pipe", "pipe"] });
+
+    // Close stdin immediately — the -p flag reads the prompt from argv, not stdin.
+    // Leaving stdin open causes Claude CLI to wait 3 s and then exit 1.
+    // The /stdin API (for interactive permission responses) will re-open the pipe
+    // only when the process is still alive and stdin writable.
+    child.stdin.end();
+
+    if (opts.pipelineId) registerProcess(opts.pipelineId, child);
+
     let out = "";
     let err = "";
     const timeout = opts.timeoutMs
       ? setTimeout(() => {
           child.kill("SIGTERM");
+          if (opts.pipelineId) unregisterProcess(opts.pipelineId);
           reject(new Error(`claude timed out after ${opts.timeoutMs}ms`));
         }, opts.timeoutMs)
       : null;
 
-    child.stdout.on("data", (d: Buffer) => { out += d.toString(); });
-    child.stderr.on("data", (d: Buffer) => { err += d.toString(); });
+    child.stdout.on("data", (d: Buffer) => {
+      const text = d.toString();
+      out += text;
+      if (opts.pipelineId) appendLog(opts.pipelineId, text);
+    });
+    child.stderr.on("data", (d: Buffer) => {
+      const text = d.toString();
+      err += text;
+      if (opts.pipelineId) appendLog(opts.pipelineId, text);
+    });
     child.on("error", (e) => {
       if (timeout) clearTimeout(timeout);
+      if (opts.pipelineId) unregisterProcess(opts.pipelineId);
       reject(e);
     });
     child.on("close", (code: number | null) => {
       if (timeout) clearTimeout(timeout);
+      if (opts.pipelineId) unregisterProcess(opts.pipelineId);
       if (code !== 0) {
-        reject(new Error(`claude exited ${code}: ${err.trim() || out.trim()}`));
+        // Include both stderr and stdout — the actual build failure is often in stdout
+        // while stderr only has the "no stdin data" warning or similar noise.
+        const stderrClean = err.trim().replace(/Warning: no stdin data received.*\n?/g, "").trim();
+        const detail = [stderrClean, out.trim()].filter(Boolean).join("\n---\n").slice(-2000) || err.trim();
+        reject(new Error(`claude exited ${code}: ${detail}`));
         return;
       }
       try {
@@ -84,7 +131,6 @@ export async function spawnClaudeAgent(opts: ClaudeAgentOptions): Promise<string
 
 /**
  * Legacy signature kept for existing callers (façade compat).
- * Uses api-key auth semantics identical to the old pipeline-helper spawnClaude.
  */
 export async function spawnClaude(
   prompt: string,

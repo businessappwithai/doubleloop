@@ -17,6 +17,7 @@
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   type PipelineState,
@@ -25,8 +26,9 @@ import {
   savePipeline,
   pushPhaseHistory,
 } from "../state";
-import { spawnClaudeAgent, claudeAuthFromConfig } from "../subagents/claude";
+import { spawnClaudeAgent, claudeAuthFromConfig, claudePermissionModeFromConfig } from "../subagents/claude";
 import { runDbProvisioningBackground, runBuildBackground, scaffoldMissingInfrastructure } from "./finalize";
+import { appendLog } from "../logStore";
 
 const execFileAsync = promisify(execFile);
 const MODULE_TIMEOUT_MS = 20 * 60_000;
@@ -94,6 +96,7 @@ async function buildModuleWithClaude(
   critique?: string
 ): Promise<void> {
   const { auth, apiKey } = claudeAuthFromConfig(state.config);
+  const permissionMode = claudePermissionModeFromConfig(state.config, "executor", "acceptEdits");
   const prompt = `You are a build subagent of the Double-Loop Orchestrator, implementing ONE module of this application inside the current workspace.
 
 ${buildProjectContext(state)}
@@ -115,7 +118,7 @@ Rules:
     prompt,
     model: assignment.model,
     cwd: state.workspaceDir,
-    permissionMode: "acceptEdits",
+    permissionMode,
     auth,
     ...(apiKey ? { apiKey } : {}),
     timeoutMs: MODULE_TIMEOUT_MS,
@@ -172,7 +175,7 @@ Requirements:
 
 // ─── Review + verification ──────────────────────────────────────────────────
 
-async function reviewWorkspace(state: PipelineState): Promise<{ passed: boolean; critique: string }> {
+async function reviewWorkspace(state: PipelineState, _mod?: PlanModule): Promise<{ passed: boolean; critique: string }> {
   // Prefer the ocr CLI when present; otherwise a Claude diff review.
   try {
     await execFileAsync("ocr", ["--version"], { timeout: 10_000 });
@@ -224,6 +227,106 @@ Otherwise list the specific errors that must be fixed (one per line).`,
   }
 }
 
+// ─── Failure diagnosis ────────────────────────────────────────────────────────
+
+interface TsError { file: string; line: number; col: number; code: string; message: string; }
+
+function parseTsErrors(output: string): TsError[] {
+  const re = /^(.+?)\((\d+),(\d+)\):\s+error\s+(TS\d+):\s+(.+)$/gm;
+  const errors: TsError[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(output)) !== null)
+    errors.push({ file: m[1]!, line: Number(m[2]), col: Number(m[3]), code: m[4]!, message: m[5]! });
+  return errors;
+}
+
+function parseTestFailures(output: string): string[] {
+  const lines = output.split("\n");
+  const failures: string[] = [];
+  let inBlock = false;
+  for (const line of lines) {
+    if (/^\s*●\s+/.test(line)) { inBlock = true; failures.push(line.trim()); continue; }
+    if (inBlock) {
+      if (/^(PASS|FAIL|✓|✗|✕|×|\s*at\s)/.test(line) && failures.length > 0) inBlock = false;
+      else failures.push(line.trimEnd());
+    }
+  }
+  return failures.slice(0, 80);
+}
+
+async function readFileSlice(absPath: string, centerLine: number, radius = 12): Promise<string | null> {
+  try {
+    const content = await readFile(absPath, "utf-8");
+    const lines = content.split("\n");
+    const from = Math.max(0, centerLine - 1 - radius);
+    const to = Math.min(lines.length - 1, centerLine - 1 + radius);
+    return lines.slice(from, to + 1)
+      .map((l, i) => `${from + i + 1}${from + i + 1 === centerLine ? " ► " : "   "}${l}`)
+      .join("\n");
+  } catch { return null; }
+}
+
+async function diagnoseFailure(
+  state: PipelineState,
+  mod: PlanModule,
+  stepDescription: string,
+  rawOutput: string,
+): Promise<string> {
+  const tsErrors = parseTsErrors(rawOutput);
+  const testFailures = parseTestFailures(rawOutput);
+
+  const snippetParts: string[] = [];
+  const seen = new Set<string>();
+  for (const err of tsErrors.slice(0, 4)) {
+    const abs = join(state.workspaceDir, err.file);
+    if (seen.has(abs)) continue;
+    seen.add(abs);
+    const slice = await readFileSlice(abs, err.line);
+    if (slice) snippetParts.push(`### ${err.file} (around line ${err.line})\n\`\`\`\n${slice}\n\`\`\``);
+  }
+
+  const structuredErrors = [
+    tsErrors.length > 0
+      ? `TypeScript errors (${tsErrors.length}):\n${tsErrors.slice(0, 20).map((e) => `  ${e.file}(${e.line},${e.col}) ${e.code}: ${e.message}`).join("\n")}`
+      : "",
+    testFailures.length > 0
+      ? `Test failures:\n${testFailures.join("\n")}`
+      : "",
+  ].filter(Boolean).join("\n\n") || rawOutput.slice(-1500);
+
+  try {
+    const { auth, apiKey } = claudeAuthFromConfig(state.config);
+    const prescription = await spawnClaudeAgent({
+      prompt: `You are a diagnostic agent. A build step failed and you must produce a surgical fix prescription.
+
+FAILED STEP: ${stepDescription}
+MODULE: ${mod.title} (${mod.moduleId})
+FILES OWNED BY THIS MODULE: ${(mod.touches || []).join(", ") || "(as needed)"}
+
+ERRORS:
+${structuredErrors}
+
+${snippetParts.length > 0 ? `FILE SNIPPETS (arrow ► marks the error line):\n${snippetParts.join("\n\n")}` : ""}
+
+Respond with a numbered list of SPECIFIC, SURGICAL changes. For each:
+- State the file path and line number
+- State the exact problem (wrong import, wrong type, missing export, etc.)
+- State what to write instead (be precise — include actual code if helpful)
+
+Do NOT give generic advice. Do NOT explain concepts. Fix THESE specific errors. Under 400 words.`,
+      model: "claude-haiku-4-5-20251001",
+      cwd: state.workspaceDir,
+      auth,
+      ...(apiKey ? { apiKey } : {}),
+      timeoutMs: 90_000,
+    });
+    appendLog(state.pipelineId, `[Diagnose] "${mod.title || mod.moduleId}" — ${prescription.slice(0, 300)}`);
+    return `Diagnostic prescription for "${stepDescription}":\n${prescription}`;
+  } catch {
+    return `${stepDescription} failed:\n${structuredErrors}`;
+  }
+}
+
 /**
  * Make sure the workspace's npm dependencies are installed before exit
  * clauses run — otherwise typecheck/build clauses fail with "cannot find
@@ -261,13 +364,11 @@ async function runExitClauses(
       const expected = clause.expect?.exitCode ?? 0;
       const actual = typeof e.code === "number" ? e.code : 1;
       if (actual !== expected) {
-        // Capture the TAIL of the output — build tools print the actual
-        // error last; the head is usually banner noise.
-        const output = ((e.stdout || "") + "\n" + (e.stderr || "")).trim() || e.message || "";
-        return {
-          passed: false,
-          detail: `Clause ${clause.clauseId} (${clause.description}) failed: ${output.slice(-1500)}`,
-        };
+        const rawOutput = ((e.stdout || "") + "\n" + (e.stderr || "")).trim() || e.message || "";
+        const clauseDesc = `${clause.argv!.join(" ")} (${clause.description})`;
+        appendLog(state.pipelineId, `[Clause] "${mod.title || mod.moduleId}" — "${clauseDesc}" failed (exit ${actual}), diagnosing…`);
+        const detail = await diagnoseFailure(state, mod, clauseDesc, rawOutput);
+        return { passed: false, detail };
       }
     }
   }
@@ -284,12 +385,14 @@ async function runOneModule(pipelineId: string, mod: PlanModule): Promise<boolea
 
   // Seed the critique with the failure from a previous fleet run (if the
   // gate was reopened after a FAILED execution) so retries keep their memory.
+  const label = mod.title || mod.moduleId;
   let critique =
     (state.board?.modules.find((m) => m.moduleId === mod.moduleId) as any)?.failure || "";
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const latest = await getPipeline(pipelineId);
     if (!latest || latest.phase === "ABORTED" || latest.phase === "FAILED") return false;
 
+    appendLog(pipelineId, `[Module] "${label}" — attempt ${attempt}/${maxAttempts} (${assignment.vendor}:${assignment.model})`);
     console.log(`[Fleet] ${mod.moduleId} attempt ${attempt}/${maxAttempts} via ${assignment.vendor}:${assignment.model}`);
     try {
       if (assignment.vendor === "codewhale") {
@@ -298,31 +401,36 @@ async function runOneModule(pipelineId: string, mod: PlanModule): Promise<boolea
         await buildModuleWithClaude(latest, mod, assignment, critique || undefined);
       }
     } catch (buildErr: any) {
-      console.warn(`[Fleet] ${mod.moduleId} builder error:`, buildErr.message?.slice(0, 300));
+      const msg = buildErr.message?.slice(0, 200) ?? "unknown error";
+      console.warn(`[Fleet] ${mod.moduleId} builder error:`, msg);
       if (assignment.vendor === "codewhale") {
-        // CodeWhale unavailable → honest fallback to the Claude fleet, logged.
+        appendLog(pipelineId, `[Module] "${label}" — CodeWhale unavailable, falling back to Claude`);
         try {
           await buildModuleWithClaude(latest, mod, { ...assignment, vendor: "claude-code", model: latest.config?.providers?.executor?.model || "claude-haiku-4-5-20251001" }, critique || undefined);
         } catch (e2: any) {
           critique = `Builder failed: ${e2.message}`;
+          appendLog(pipelineId, `[Module] "${label}" — builder error (attempt ${attempt}): ${e2.message?.slice(0, 200)}`);
           continue;
         }
       } else {
-        critique = `Builder failed: ${buildErr.message}`;
+        critique = `Builder failed: ${msg}`;
+        appendLog(pipelineId, `[Module] "${label}" — builder error (attempt ${attempt}): ${msg}`);
         continue;
       }
     }
 
-    const review = await reviewWorkspace(latest);
+    const review = await reviewWorkspace(latest, mod);
     if (!review.passed) {
       critique = review.critique;
+      appendLog(pipelineId, `[Module] "${label}" — review failed (attempt ${attempt}): ${review.critique.slice(0, 300)}`);
       console.log(`[Fleet] ${mod.moduleId} review found issues (attempt ${attempt})`);
       continue;
     }
 
     const deps = await ensureDependencies(latest);
     if (!deps.ok) {
-      critique = deps.detail;
+      appendLog(pipelineId, `[Module] "${label}" — dependency install failed (attempt ${attempt}), diagnosing…`);
+      critique = await diagnoseFailure(latest, mod, "npm install", deps.detail);
       console.log(`[Fleet] ${mod.moduleId} dependency install failed (attempt ${attempt}): ${deps.detail.slice(0, 200)}`);
       continue;
     }
@@ -330,16 +438,19 @@ async function runOneModule(pipelineId: string, mod: PlanModule): Promise<boolea
     const clauses = await runExitClauses(latest, mod);
     if (!clauses.passed) {
       critique = clauses.detail;
+      appendLog(pipelineId, `[Module] "${label}" — exit clause failed (attempt ${attempt}): ${clauses.detail.slice(0, 200)}`);
       console.log(`[Fleet] ${mod.moduleId} exit clause failed (attempt ${attempt}): ${clauses.detail.slice(0, 200)}`);
       continue;
     }
 
     await updateModuleStatus(pipelineId, mod.moduleId, "PASSED", attempt);
+    appendLog(pipelineId, `[Module] "${label}" — PASSED ✓ (${attempt} attempt${attempt > 1 ? "s" : ""})`);
     console.log(`[Fleet] ${mod.moduleId} PASSED (attempt ${attempt})`);
     return true;
   }
 
   await updateModuleStatus(pipelineId, mod.moduleId, "FAILED", maxAttempts, critique);
+  appendLog(pipelineId, `[Module] "${label}" — FAILED ✗ after ${maxAttempts} attempt${maxAttempts > 1 ? "s" : ""}. Last issue: ${critique.slice(0, 300)}`);
   console.warn(`[Fleet] ${mod.moduleId} FAILED after ${maxAttempts} attempts`);
   return false;
 }
@@ -363,11 +474,16 @@ async function updateModuleStatus(
   await savePipeline(state);
 }
 
+const FLEET_MAX_RETRIES = 3;
+
 /**
  * DAG-parallel dispatch: run every module whose dependencies have PASSED,
  * up to maxConcurrent at a time, until all modules are settled.
+ *
+ * If every single module fails the fleet retries up to FLEET_MAX_RETRIES times
+ * total before giving up. Partial failures (some passed) still proceed to build.
  */
-export async function runExecutionBackground(pipelineId: string, _toolsConfirmed = false): Promise<void> {
+export async function runExecutionBackground(pipelineId: string, _toolsConfirmed = false, fleetAttempt = 1): Promise<void> {
   const state = await getPipeline(pipelineId);
   if (!state) return;
 
@@ -403,7 +519,9 @@ export async function runExecutionBackground(pipelineId: string, _toolsConfirmed
   const depsOk = (m: PlanModule) => (m.dependsOn || []).every((d) => settled.get(d) === "PASSED");
   const depsFailed = (m: PlanModule) => (m.dependsOn || []).some((d) => settled.get(d) === "FAILED");
 
-  console.log(`[Fleet] Dispatching ${planModules.length} modules (maxConcurrent=${maxConcurrent})`);
+  const fleetLabel = fleetAttempt > 1 ? ` (fleet retry ${fleetAttempt}/${FLEET_MAX_RETRIES})` : "";
+  console.log(`[Fleet] Dispatching ${planModules.length} modules (maxConcurrent=${maxConcurrent})${fleetLabel}`);
+  appendLog(pipelineId, `[Fleet] Dispatching ${planModules.length} modules, maxConcurrent=${maxConcurrent}${fleetLabel}`);
 
   while (settled.size < planModules.length) {
     const latest = await getPipeline(pipelineId);
@@ -417,7 +535,10 @@ export async function runExecutionBackground(pipelineId: string, _toolsConfirmed
     for (const m of planModules) {
       if (!settled.has(m.moduleId) && !inFlight.has(m.moduleId) && depsFailed(m)) {
         settled.set(m.moduleId, "FAILED");
-        await updateModuleStatus(pipelineId, m.moduleId, "BLOCKED", 0, "A dependency module failed");
+        const failedDeps = (m.dependsOn || []).filter((d) => settled.get(d) === "FAILED");
+        const blockedLabel = m.title || m.moduleId;
+        appendLog(pipelineId, `[Module] "${blockedLabel}" — BLOCKED (dependency failed: ${failedDeps.join(", ")})`);
+        await updateModuleStatus(pipelineId, m.moduleId, "BLOCKED", 0, `Dependency failed: ${failedDeps.join(", ")}`);
       }
     }
 
@@ -426,6 +547,7 @@ export async function runExecutionBackground(pipelineId: string, _toolsConfirmed
       if (inFlight.size >= maxConcurrent) break;
       if (settled.has(m.moduleId) || inFlight.has(m.moduleId) || !depsOk(m)) continue;
 
+      appendLog(pipelineId, `[Fleet] Dispatching "${m.title || m.moduleId}" (${settled.size}/${planModules.length} settled, ${inFlight.size + 1} in-flight)`);
       await updateModuleStatus(pipelineId, m.moduleId, "EXECUTING", 0);
       const p = runOneModule(pipelineId, m)
         .then((ok) => { settled.set(m.moduleId, ok ? "PASSED" : "FAILED"); })
@@ -452,13 +574,39 @@ export async function runExecutionBackground(pipelineId: string, _toolsConfirmed
   }
 
   const failures = [...settled.values()].filter((v) => v === "FAILED").length;
+  const passed = [...settled.values()].filter((v) => v === "PASSED").length;
+  appendLog(pipelineId, `[Fleet] Complete — ${passed} passed, ${failures} failed out of ${planModules.length} modules`);
   const finalState = await getPipeline(pipelineId);
   if (!finalState) return;
 
   if (failures === planModules.length) {
+    if (fleetAttempt < FLEET_MAX_RETRIES) {
+      appendLog(
+        pipelineId,
+        `[Fleet] All ${planModules.length} modules failed on fleet attempt ${fleetAttempt}/${FLEET_MAX_RETRIES} — resetting and retrying entire fleet…`
+      );
+      // Reset every FAILED/BLOCKED module back to PENDING so the fleet reruns them.
+      if (finalState.board) {
+        for (const entry of finalState.board.modules) {
+          if (entry.status === "FAILED" || entry.status === "BLOCKED") {
+            entry.status = "PENDING";
+            entry.attempts = 0;
+            delete (entry as any).failure;
+          }
+        }
+      }
+      finalState.lastTransitionAt = new Date().toISOString();
+      await savePipeline(finalState);
+      return runExecutionBackground(pipelineId, _toolsConfirmed, fleetAttempt + 1);
+    }
+
+    appendLog(
+      pipelineId,
+      `[Fleet] All ${planModules.length} modules failed on all ${FLEET_MAX_RETRIES} fleet attempts — marking pipeline FAILED.`
+    );
     finalState.phase = "FAILED";
     pushPhaseHistory(finalState, "FAILED");
-    finalState.error = "Every build module failed — nothing was built.";
+    finalState.error = `Every build module failed after ${FLEET_MAX_RETRIES} full-fleet attempts — nothing was built.`;
     finalState.lastTransitionAt = new Date().toISOString();
     await savePipeline(finalState);
     return;

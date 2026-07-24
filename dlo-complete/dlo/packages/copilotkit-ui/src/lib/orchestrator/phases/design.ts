@@ -23,9 +23,10 @@ import {
   saveDesignDoc,
   pushPhaseHistory,
 } from "../state";
-import { spawnClaudeAgent, claudeAuthFromConfig } from "../subagents/claude";
+import { spawnClaudeAgent, claudeAuthFromConfig, claudePermissionModeFromConfig } from "../subagents/claude";
 import { getSubagentRunner } from "../subagents/pi";
 import { runCeoReviewBackground } from "./review";
+import { appendLog } from "../logStore";
 
 const DESIGN_TIMEOUT_MS = 15 * 60_000;
 
@@ -226,21 +227,26 @@ export async function runDesignBackground(pipelineId: string): Promise<void> {
   try {
     const plannerModel = state.config?.providers?.planner?.model || "claude-sonnet-5";
     const { auth, apiKey } = claudeAuthFromConfig(state.config);
+    const permissionMode = claudePermissionModeFromConfig(state.config, "planner", "bypassPermissions");
     const runner = await getSubagentRunner(state.config);
 
+    const pluginDirs: string[] = state.config?.skills?.pluginDirs ?? [];
     const invoke = async (prompt: string) =>
       spawnClaudeAgent({
         prompt,
         model: plannerModel,
         cwd: state.workspaceDir,
-        permissionMode: "plan",
+        permissionMode,
         auth,
         ...(apiKey ? { apiKey } : {}),
         timeoutMs: DESIGN_TIMEOUT_MS,
+        pipelineId,
+        ...(pluginDirs.length ? { pluginDirs } : {}),
       });
 
     // Architecture first (the other two build on it), then DB + Implementation.
-    console.log(`[Design] Authoring Architecture.md (model=${plannerModel}, auth=${auth}, runner=${runner.kind})`);
+    appendLog(pipelineId, `[Design] Starting Design Analyst (model=${plannerModel}, auth=${auth})`);
+    appendLog(pipelineId, `[Design] Step 1/3: Authoring Architecture.md…`);
     const [archResult] = await runner.runParallel([
       {
         name: "design-analyst:architecture",
@@ -253,7 +259,8 @@ export async function runDesignBackground(pipelineId: string): Promise<void> {
     }
     const architectureMd = stripOuterFence(archResult.value);
 
-    console.log(`[Design] Authoring Database.md + Implementation.md`);
+    appendLog(pipelineId, `[Design] Architecture.md complete — Step 2/3: Authoring Database.md…`);
+    appendLog(pipelineId, `[Design] Step 3/3: Authoring Implementation.md…`);
     const [dbResult] = await runner.runParallel([
       {
         name: "design-analyst:database",

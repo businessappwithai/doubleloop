@@ -24,7 +24,8 @@ import {
   pushPhaseHistory,
   writeWorkspaceMarkdown,
 } from "../state";
-import { spawnClaudeAgent, claudeAuthFromConfig } from "../subagents/claude";
+import { spawnClaudeAgent, claudeAuthFromConfig, claudePermissionModeFromConfig } from "../subagents/claude";
+import { appendLog } from "../logStore";
 
 const execFileAsync = promisify(execFile);
 const MAX_FIX_ROUNDS = 3;
@@ -37,6 +38,7 @@ async function runFixerSubagent(
   failureOutput: string
 ): Promise<void> {
   const { auth, apiKey } = claudeAuthFromConfig(state.config);
+  const permissionMode = claudePermissionModeFromConfig(state.config, "executor", "acceptEdits");
   const model = state.config?.providers?.executor?.model || "claude-haiku-4-5-20251001";
   console.log(`[Fixer] Repairing ${failureKind} failure with ${model}`);
   await spawnClaudeAgent({
@@ -53,7 +55,7 @@ Rules:
 - Verify your fix compiles if a quick check is possible.`,
     model,
     cwd: state.workspaceDir,
-    permissionMode: "acceptEdits",
+    permissionMode,
     auth,
     ...(apiKey ? { apiKey } : {}),
     timeoutMs: 15 * 60_000,
@@ -437,7 +439,10 @@ export async function runBuildBackground(pipelineId: string, hasPermission: bool
     let buildPassed = false;
     let fixRounds = 0;
 
+    appendLog(pipelineId, `[Build] Starting build: ${buildCmd.cmd} ${buildCmd.args.join(" ")}`);
+
     if (buildCmd.cmd === "npm" || buildCmd.cmd === "npx") {
+      appendLog(pipelineId, "[Build] Running npm install…");
       try {
         const { stdout, stderr } = await execFileAsync("npm", ["install", "--prefer-offline", "--no-audit", "--no-fund"], {
           cwd: state.workspaceDir,
@@ -445,15 +450,16 @@ export async function runBuildBackground(pipelineId: string, hasPermission: bool
           env: { ...process.env },
         });
         buildOutput += stdout + stderr;
+        if (stdout || stderr) appendLog(pipelineId, (stdout + stderr).slice(-800));
       } catch (e: any) {
         buildOutput += (e.stdout || "") + (e.stderr || "");
-        console.warn("[Build] npm install warning:", e.message?.slice(0, 200));
+        appendLog(pipelineId, `[Build] npm install warning: ${e.message?.slice(0, 200)}`);
       }
     }
 
     // Build → on failure, fixer subagent → rebuild (up to MAX_FIX_ROUNDS).
     for (let round = 0; round <= MAX_FIX_ROUNDS; round++) {
-      console.log(`[Build] Running: ${buildCmd.cmd} ${buildCmd.args.join(" ")} (round ${round + 1})`);
+      appendLog(pipelineId, `[Build] Running ${buildCmd.cmd} ${buildCmd.args.join(" ")} (round ${round + 1}/${MAX_FIX_ROUNDS + 1})`);
       try {
         const { stdout, stderr } = await execFileAsync(buildCmd.cmd, buildCmd.args, {
           cwd: state.workspaceDir,
@@ -461,14 +467,18 @@ export async function runBuildBackground(pipelineId: string, hasPermission: bool
           env: { ...process.env, CI: "true" },
         });
         buildOutput += stdout + stderr;
+        if (stdout || stderr) appendLog(pipelineId, (stdout + stderr).slice(-600));
         buildPassed = true;
+        appendLog(pipelineId, "[Build] Build PASSED");
         break;
       } catch (err: any) {
         const failOut = (err.stdout || "") + (err.stderr || "");
         buildOutput += failOut;
         buildPassed = false;
+        appendLog(pipelineId, `[Build] Build FAILED (round ${round + 1}): ${failOut.slice(-400) || err.message?.slice(0, 400)}`);
         if (round < MAX_FIX_ROUNDS) {
           fixRounds++;
+          appendLog(pipelineId, `[Build] Running Fixer subagent (fix round ${fixRounds})…`);
           try {
             await runFixerSubagent(state, "build", failOut || err.message);
             // Fixer may add deps — reinstall cheaply before retrying.
@@ -476,7 +486,7 @@ export async function runBuildBackground(pipelineId: string, hasPermission: bool
               cwd: state.workspaceDir, timeout: 300_000, env: { ...process.env },
             }).catch(() => { /* ignore */ });
           } catch (fixErr: any) {
-            console.warn(`[Build] Fixer round ${fixRounds} failed:`, fixErr.message?.slice(0, 200));
+            appendLog(pipelineId, `[Build] Fixer round ${fixRounds} failed: ${fixErr.message?.slice(0, 200)}`);
             break;
           }
         }
@@ -499,7 +509,7 @@ export async function runBuildBackground(pipelineId: string, hasPermission: bool
     fresh.lastTransitionAt = new Date().toISOString();
     await savePipeline(fresh);
 
-    console.log(`[Build] Build ${buildPassed ? "passed" : "failed"} for ${pipelineId} after ${fixRounds} fix round(s)`);
+    appendLog(pipelineId, `[Build] Build ${buildPassed ? "passed ✓" : "failed"} after ${fixRounds} fix round(s) — proceeding to DB provisioning`);
     void runDbProvisioningBackground(pipelineId, false);
   } catch (err: any) {
     const s = await getPipeline(pipelineId);
@@ -572,6 +582,7 @@ export async function runDbProvisioningBackground(
       await execFileAsync("docker", ["rm", "-f", containerId], { timeout: 15_000 });
     } catch { /* ignore */ }
 
+    appendLog(pipelineId, `[DB] Starting PostgreSQL container ${containerId}…`);
     await execFileAsync(
       "docker",
       [
@@ -586,6 +597,7 @@ export async function runDbProvisioningBackground(
       { timeout: 60_000 }
     );
 
+    appendLog(pipelineId, "[DB] Waiting for PostgreSQL to be ready…");
     let ready = false;
     for (let i = 0; i < 30; i++) {
       await new Promise((r) => setTimeout(r, 2000));
@@ -597,11 +609,11 @@ export async function runDbProvisioningBackground(
     }
 
     if (!ready) throw new Error("PostgreSQL did not become ready within 60 seconds");
-    console.log(`[DB] PostgreSQL ${containerId} is ready`);
+    appendLog(pipelineId, `[DB] PostgreSQL ${containerId} is ready — running migrations…`);
 
     const dbUrl = `postgresql://dlo:dlopassword@localhost:5433/dlo_app`;
     const migrationResult = await runMigrations(state, dbUrl, containerId);
-    console.log(`[DB] Migrations: ${migrationResult}`);
+    appendLog(pipelineId, `[DB] Migrations: ${migrationResult}`);
 
     state.dbConnectionString = dbUrl;
     state.dbContainerId = containerId;
@@ -678,11 +690,11 @@ export async function runTestingBackground(
       CI: "true",
     };
 
-    console.log(`[Test] Installing dependencies in ${state.workspaceDir}...`);
+    appendLog(pipelineId, `[Test] Installing dependencies…`);
     try {
       await execFileAsync("npm", ["install"], { cwd: state.workspaceDir, env: dbEnv, timeout: 300_000 });
     } catch (e: any) {
-      console.warn("[Test] npm install warning:", e.message);
+      appendLog(pipelineId, `[Test] npm install warning: ${e.message?.slice(0, 200)}`);
     }
 
     let testOutput = "";
@@ -691,7 +703,7 @@ export async function runTestingBackground(
 
     // Test → on failure, fixer subagent → retest (up to MAX_FIX_ROUNDS).
     for (let round = 0; round <= MAX_FIX_ROUNDS; round++) {
-      console.log(`[Test] Running: ${testCmd.cmd} ${testCmd.args.join(" ")} (round ${round + 1})`);
+      appendLog(pipelineId, `[Test] Running ${testCmd.cmd} ${testCmd.args.join(" ")} (round ${round + 1}/${MAX_FIX_ROUNDS + 1})`);
       try {
         const result = await execFileAsync(testCmd.cmd, testCmd.args, {
           cwd: state.workspaceDir,
@@ -699,20 +711,24 @@ export async function runTestingBackground(
           timeout: 300_000,
         });
         testOutput = result.stdout + result.stderr;
+        if (testOutput) appendLog(pipelineId, testOutput.slice(-600));
         rawPassed = true;
+        appendLog(pipelineId, "[Test] Tests PASSED");
         break;
       } catch (err: any) {
         testOutput = (err.stdout || "") + (err.stderr || "");
         rawPassed = false;
+        appendLog(pipelineId, `[Test] Tests FAILED (round ${round + 1}): ${testOutput.slice(-400) || err.message?.slice(0, 400)}`);
         if (round < MAX_FIX_ROUNDS) {
           fixRounds++;
+          appendLog(pipelineId, `[Test] Running Fixer subagent (fix round ${fixRounds})…`);
           try {
             await runFixerSubagent(state, "test", testOutput || err.message);
             await execFileAsync("npm", ["install", "--prefer-offline", "--no-audit", "--no-fund"], {
               cwd: state.workspaceDir, timeout: 300_000, env: dbEnv,
             }).catch(() => { /* ignore */ });
           } catch (fixErr: any) {
-            console.warn(`[Test] Fixer round ${fixRounds} failed:`, fixErr.message?.slice(0, 200));
+            appendLog(pipelineId, `[Test] Fixer round ${fixRounds} failed: ${fixErr.message?.slice(0, 200)}`);
             break;
           }
         }
@@ -721,8 +737,12 @@ export async function runTestingBackground(
 
     const durationMs = Date.now() - startTime;
 
+    appendLog(pipelineId, "[Test] Supervisor reviewing test output…");
     const supervisorResult = await supervisorReviewTestOutput(testOutput, state);
     const finalPassed = rawPassed || supervisorResult.override;
+    if (supervisorResult.override) {
+      appendLog(pipelineId, `[Test] Supervisor overrode failure: ${supervisorResult.reasoning?.slice(0, 200)}`);
+    }
 
     state.testResults = {
       passed: finalPassed,
@@ -737,7 +757,7 @@ export async function runTestingBackground(
     state.lastTransitionAt = new Date().toISOString();
     await savePipeline(state);
 
-    console.log(`[Test] Tests ${finalPassed ? "passed" : "failed"} for ${pipelineId} (${durationMs}ms, ${fixRounds} fix round(s))`);
+    appendLog(pipelineId, `[Test] Tests ${finalPassed ? "passed ✓" : "failed"} (${durationMs}ms, ${fixRounds} fix round(s)) — proceeding to deploy`);
     void runDeployBackground(pipelineId, false);
   } catch (err: any) {
     const s = await getPipeline(pipelineId);
