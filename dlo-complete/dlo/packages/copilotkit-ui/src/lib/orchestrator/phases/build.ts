@@ -506,6 +506,37 @@ async function updateModuleStatus(
 const FLEET_MAX_RETRIES = 3;
 
 /**
+ * Prepare the board for another full-fleet attempt.
+ *
+ * FAILED and BLOCKED modules go back to PENDING, but a FAILED module KEEPS its
+ * recorded failure: runOneModule seeds its first attempt's critique from that
+ * field, so preserving it is what turns three isolated 3-attempt runs into nine
+ * attempts that build on each other. Discarding it made every fleet retry
+ * rediscover the same errors — observed on a real run where module 1 got one
+ * step further each attempt (unpublished dependency version → build error →
+ * typecheck error) and then lost all of it on reset.
+ *
+ * A BLOCKED module's "failure" is only "Dependency failed: mX" — it says nothing
+ * about that module's own code, so it is cleared rather than fed back as if it
+ * were a code review. PASSED modules are left untouched so work is not redone.
+ */
+export function resetBoardForFleetRetry(
+  modules: Array<{ moduleId: string; status: string; attempts: number; failure?: string }>
+): void {
+  for (const entry of modules) {
+    if (entry.status === "FAILED") {
+      entry.status = "PENDING";
+      entry.attempts = 0;
+      // failure deliberately preserved as the next attempt's starting critique
+    } else if (entry.status === "BLOCKED") {
+      entry.status = "PENDING";
+      entry.attempts = 0;
+      delete entry.failure;
+    }
+  }
+}
+
+/**
  * DAG-parallel dispatch: run every module whose dependencies have PASSED,
  * up to maxConcurrent at a time, until all modules are settled.
  *
@@ -614,15 +645,8 @@ export async function runExecutionBackground(pipelineId: string, _toolsConfirmed
         pipelineId,
         `[Fleet] All ${planModules.length} modules failed on fleet attempt ${fleetAttempt}/${FLEET_MAX_RETRIES} — resetting and retrying entire fleet…`
       );
-      // Reset every FAILED/BLOCKED module back to PENDING so the fleet reruns them.
       if (finalState.board) {
-        for (const entry of finalState.board.modules) {
-          if (entry.status === "FAILED" || entry.status === "BLOCKED") {
-            entry.status = "PENDING";
-            entry.attempts = 0;
-            delete (entry as any).failure;
-          }
-        }
+        resetBoardForFleetRetry(finalState.board.modules);
       }
       finalState.lastTransitionAt = new Date().toISOString();
       await savePipeline(finalState);
