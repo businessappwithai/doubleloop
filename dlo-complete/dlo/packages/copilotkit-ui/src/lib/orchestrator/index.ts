@@ -49,7 +49,8 @@ export {
   detectBuildCommand,
 } from "./phases/finalize";
 export type { TestCommand, TestOutcome } from "./phases/finalize";
-export { withInstallLock } from "./phases/build";
+export { withInstallLock, installDependencies, isStaleRegistryMetadataError } from "./npm";
+export type { InstallResult } from "./npm";
 export { spawnClaude, spawnClaudeAgent, claudeAuthFromConfig, checkClaudeCli } from "./subagents/claude";
 export { generateWithGemini, friendlyGeminiError } from "./subagents/gemini";
 export { getSubagentRunner } from "./subagents/pi";

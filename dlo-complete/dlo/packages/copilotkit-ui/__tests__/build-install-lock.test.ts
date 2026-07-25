@@ -6,7 +6,7 @@
  */
 
 import { describe, test, expect } from "vitest";
-import { withInstallLock } from "../src/lib/orchestrator/phases/build";
+import { withInstallLock } from "../src/lib/orchestrator/npm";
 
 /** Resolves after `ms`, recording when it entered and left the critical section. */
 function tracked(log: string[], label: string, ms: number) {

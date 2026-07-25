@@ -25,6 +25,7 @@ import {
   writeWorkspaceMarkdown,
 } from "../state";
 import { spawnClaudeAgent, claudeAuthFromConfig, claudePermissionModeFromConfig } from "../subagents/claude";
+import { installDependencies } from "../npm";
 import { appendLog } from "../logStore";
 
 const execFileAsync = promisify(execFile);
@@ -566,17 +567,13 @@ export async function runBuildBackground(pipelineId: string, hasPermission: bool
 
     if (buildCmd.cmd === "npm" || buildCmd.cmd === "npx") {
       appendLog(pipelineId, "[Build] Running npm install…");
-      try {
-        const { stdout, stderr } = await execFileAsync("npm", ["install", "--prefer-offline", "--no-audit", "--no-fund"], {
-          cwd: state.workspaceDir,
-          timeout: 300_000,
-          env: { ...process.env },
-        });
-        buildOutput += stdout + stderr;
-        if (stdout || stderr) appendLog(pipelineId, (stdout + stderr).slice(-800));
-      } catch (e: any) {
-        buildOutput += (e.stdout || "") + (e.stderr || "");
-        appendLog(pipelineId, `[Build] npm install warning: ${e.message?.slice(0, 200)}`);
+      const install = await installDependencies(state.workspaceDir);
+      if (install.refetchedMetadata) {
+        appendLog(pipelineId, "[Build] npm's cached registry metadata was stale — reinstalled with --prefer-online.");
+      }
+      if (!install.ok) {
+        buildOutput += install.detail;
+        appendLog(pipelineId, `[Build] npm install warning: ${install.detail.slice(-300)}`);
       }
     }
 
@@ -605,9 +602,7 @@ export async function runBuildBackground(pipelineId: string, hasPermission: bool
           try {
             await runFixerSubagent(state, "build", failOut || err.message);
             // Fixer may add deps — reinstall cheaply before retrying.
-            await execFileAsync("npm", ["install", "--prefer-offline", "--no-audit", "--no-fund"], {
-              cwd: state.workspaceDir, timeout: 300_000, env: { ...process.env },
-            }).catch(() => { /* ignore */ });
+            await installDependencies(state.workspaceDir);
           } catch (fixErr: any) {
             appendLog(pipelineId, `[Build] Fixer round ${fixRounds} failed: ${fixErr.message?.slice(0, 200)}`);
             break;
@@ -846,7 +841,11 @@ export async function runTestingBackground(
 
     appendLog(pipelineId, `[Test] Installing dependencies…`);
     try {
-      await execFileAsync("npm", ["install"], { cwd: state.workspaceDir, env: dbEnv, timeout: 300_000 });
+      const testInstall = await installDependencies(state.workspaceDir, dbEnv);
+      if (testInstall.refetchedMetadata) {
+        appendLog(pipelineId, "[Test] npm's cached registry metadata was stale — reinstalled with --prefer-online.");
+      }
+      if (!testInstall.ok) appendLog(pipelineId, `[Test] npm install warning: ${testInstall.detail.slice(-300)}`);
     } catch (e: any) {
       appendLog(pipelineId, `[Test] npm install warning: ${e.message?.slice(0, 200)}`);
     }
@@ -880,9 +879,7 @@ export async function runTestingBackground(
             );
             try {
               await runTestAuthorSubagent(state, "empty-suite");
-              await execFileAsync("npm", ["install", "--prefer-offline", "--no-audit", "--no-fund"], {
-                cwd: state.workspaceDir, timeout: 300_000, env: dbEnv,
-              }).catch(() => { /* ignore */ });
+              await installDependencies(state.workspaceDir, dbEnv);
               // The author may have introduced the runner or changed the script.
               testCmd = (await detectTestCommand(state.workspaceDir)) ?? testCmd;
             } catch (e: any) {
@@ -909,9 +906,7 @@ export async function runTestingBackground(
           appendLog(pipelineId, `[Test] Running Fixer subagent (fix round ${fixRounds})…`);
           try {
             await runFixerSubagent(state, "test", testOutput || err.message);
-            await execFileAsync("npm", ["install", "--prefer-offline", "--no-audit", "--no-fund"], {
-              cwd: state.workspaceDir, timeout: 300_000, env: dbEnv,
-            }).catch(() => { /* ignore */ });
+            await installDependencies(state.workspaceDir, dbEnv);
           } catch (fixErr: any) {
             appendLog(pipelineId, `[Test] Fixer round ${fixRounds} failed: ${fixErr.message?.slice(0, 200)}`);
             break;
@@ -1142,11 +1137,7 @@ export async function runDeployBackground(pipelineId: string, hasPermission: boo
       child.unref();
     } else {
       try {
-        await execFileAsync("npm", ["install", "--prefer-offline", "--no-audit", "--no-fund"], {
-          cwd: state.workspaceDir,
-          timeout: 120_000,
-          env: { ...process.env, NODE_ENV: "development" },
-        });
+        await installDependencies(state.workspaceDir, { ...process.env, NODE_ENV: "development" });
       } catch (e: any) {
         console.warn("[Deploy] npm install warning:", e.message?.slice(0, 200));
       }

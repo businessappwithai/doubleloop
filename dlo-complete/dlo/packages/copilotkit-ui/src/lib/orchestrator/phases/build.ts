@@ -28,6 +28,7 @@ import {
 } from "../state";
 import { spawnClaudeAgent, claudeAuthFromConfig, claudePermissionModeFromConfig } from "../subagents/claude";
 import { runDbProvisioningBackground, runBuildBackground, scaffoldMissingInfrastructure } from "./finalize";
+import { installDependencies } from "../npm";
 import { appendLog } from "../logStore";
 
 const execFileAsync = promisify(execFile);
@@ -354,53 +355,20 @@ Do NOT give generic advice. Do NOT explain concepts. Fix THESE specific errors. 
 }
 
 /**
- * Serializes npm installs per workspace directory.
- *
- * The fleet runs modules in parallel inside ONE workspace, so without this the
- * concurrent `npm install` calls race on the same node_modules and
- * package-lock.json — npm corrupts the tree or fails with ENOTEMPTY/EEXIST, and
- * the module gets blamed for a failure it did not cause. Keyed by directory so
- * two pipelines with separate workspaces still install concurrently.
- */
-const installLocks = new Map<string, Promise<unknown>>();
-
-export function withInstallLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-  const previous = installLocks.get(key) ?? Promise.resolve();
-  // Chain onto the previous holder, ignoring its outcome: one module's failed
-  // install must not reject the next module's turn.
-  const run = previous.then(fn, fn);
-  // The queue tail must never be a rejected promise or it turns into an
-  // unhandled rejection the next waiter inherits.
-  installLocks.set(key, run.then(
-    () => undefined,
-    () => undefined
-  ));
-  return run;
-}
-
-/**
  * Make sure the workspace's npm dependencies are installed before exit
  * clauses run — otherwise typecheck/build clauses fail with "cannot find
  * module" no matter how good the generated code is, and retries fly blind.
  * Idempotent: npm short-circuits quickly when node_modules is current.
+ *
+ * Serialization and stale-metadata recovery live in orchestrator/npm.ts.
  */
 async function ensureDependencies(state: PipelineState): Promise<{ ok: boolean; detail: string }> {
   if (!existsSync(join(state.workspaceDir, "package.json"))) return { ok: true, detail: "" };
-  return withInstallLock(state.workspaceDir, async () => {
-    try {
-      await execFileAsync("npm", ["install", "--prefer-offline", "--no-audit", "--no-fund"], {
-        cwd: state.workspaceDir,
-        timeout: 300_000,
-        env: { ...process.env },
-      });
-      return { ok: true, detail: "" };
-    } catch (e: any) {
-      return {
-        ok: false,
-        detail: `npm install failed: ${((e.stderr || "") + (e.stdout || "") || e.message).slice(-1200)}`,
-      };
-    }
-  });
+  const result = await installDependencies(state.workspaceDir);
+  if (result.refetchedMetadata) {
+    appendLog(state.pipelineId, "[Deps] npm's cached registry metadata was stale — reinstalled with --prefer-online.");
+  }
+  return { ok: result.ok, detail: result.detail };
 }
 
 /** Run a module's command exit clauses. Non-command kinds are skipped here. */
