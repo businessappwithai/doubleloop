@@ -256,15 +256,93 @@ Otherwise list the specific errors that must be fixed (one per line).`,
 
 // ─── Failure diagnosis ────────────────────────────────────────────────────────
 
-interface TsError { file: string; line: number; col: number; code: string; message: string; }
+export interface TsError {
+  file: string;
+  line: number;
+  col: number;
+  code: string;
+  /** The headline only — what tsc prints on the error line itself. */
+  message: string;
+  /**
+   * The indented explanation tsc prints beneath the headline. This is where the
+   * actual cause lives for structural errors: TS2769 ("No overload matches this
+   * call") says nothing on its own, while the detail names the two conflicting
+   * types and the paths they came from. Dropping it left the diagnostic agent
+   * guessing, so it is captured.
+   */
+  detail: string;
+}
 
-function parseTsErrors(output: string): TsError[] {
-  const re = /^(.+?)\((\d+),(\d+)\):\s+error\s+(TS\d+):\s+(.+)$/gm;
+export function parseTsErrors(output: string): TsError[] {
+  const headline = /^(.+?)\((\d+),(\d+)\):\s+error\s+(TS\d+):\s+(.+)$/;
+  const lines = output.split("\n");
   const errors: TsError[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(output)) !== null)
-    errors.push({ file: m[1]!, line: Number(m[2]), col: Number(m[3]), code: m[4]!, message: m[5]! });
+
+  for (let i = 0; i < lines.length; i++) {
+    const m = headline.exec(lines[i]!);
+    if (!m) continue;
+    // Continuation lines are indented; the next unindented line ends this error.
+    const detail: string[] = [];
+    for (let j = i + 1; j < lines.length; j++) {
+      const next = lines[j]!;
+      if (!/^\s+\S/.test(next)) break;
+      detail.push(next.trimEnd());
+    }
+    errors.push({
+      file: m[1]!,
+      line: Number(m[2]),
+      col: Number(m[3]),
+      code: m[4]!,
+      message: m[5]!,
+      detail: detail.join("\n"),
+    });
+  }
   return errors;
+}
+
+/**
+ * Spot a package that TypeScript is seeing at two different node_modules paths.
+ *
+ * A duplicated dependency produces two structurally identical but nominally
+ * distinct types, and every resulting error reads as an inscrutable mismatch
+ * between two identical-looking types. It is unfixable in application code —
+ * the fix is always in package.json — so the builder is told plainly, rather
+ * than being left to rewrite the file that merely happens to mention both.
+ *
+ * Real case: vitest 2.x pins Vite 5 while the project used Vite 8, so
+ * node_modules/vite and node_modules/vitest/node_modules/vite both supplied
+ * `Plugin`, and module 1 burned every attempt rewriting vitest.config.ts.
+ */
+export function detectDuplicatePackageConflict(output: string): string {
+  // Every path token that walks through node_modules, e.g.
+  //   .../node_modules/vite/dist/node/index
+  //   .../node_modules/vitest/node_modules/vite/dist/node/index
+  // The package is the segment after the LAST node_modules; the whole chain of
+  // node_modules segments identifies WHERE that copy lives.
+  const pathToken = /[^\s"'()]*node_modules\/[^\s"'()]*/g;
+  const segment = /node_modules\/((?:@[^/]+\/)?[^/]+)/g;
+
+  const locationsByPackage = new Map<string, Set<string>>();
+  for (const token of output.match(pathToken) ?? []) {
+    const chain = [...token.matchAll(segment)].map((m) => m[1]!);
+    const pkg = chain[chain.length - 1];
+    if (!pkg) continue;
+    if (!locationsByPackage.has(pkg)) locationsByPackage.set(pkg, new Set());
+    locationsByPackage.get(pkg)!.add(chain.join(" > "));
+  }
+
+  const duplicated = [...locationsByPackage.entries()].filter(([, locations]) => locations.size > 1);
+  if (duplicated.length === 0) return "";
+
+  const names = duplicated.map(([pkg]) => pkg);
+  return (
+    `DUPLICATE DEPENDENCY: TypeScript is resolving ${names.map((n) => `"${n}"`).join(", ")} from more than one ` +
+    `place in node_modules (both a top-level copy and a copy nested inside another package). Two copies of a ` +
+    `package produce two incompatible versions of the same type, which is what these errors actually are — the ` +
+    `source file is fine. Fix this in package.json by choosing versions whose peer requirements agree so only ` +
+    `ONE copy is installed (check the offending package's peer/dependency range against what is pinned), then ` +
+    `reinstall. Do not attempt to work around it with casts or by editing the config file.`
+  );
 }
 
 function parseTestFailures(output: string): string[] {
@@ -312,9 +390,22 @@ async function diagnoseFailure(
     if (slice) snippetParts.push(`### ${err.file} (around line ${err.line})\n\`\`\`\n${slice}\n\`\`\``);
   }
 
+  // A duplicated dependency makes every downstream error unfixable in source,
+  // so it leads — otherwise the agent prescribes edits to a blameless file.
+  const duplicateHint = detectDuplicatePackageConflict(rawOutput);
+
   const structuredErrors = [
+    duplicateHint,
     tsErrors.length > 0
-      ? `TypeScript errors (${tsErrors.length}):\n${tsErrors.slice(0, 20).map((e) => `  ${e.file}(${e.line},${e.col}) ${e.code}: ${e.message}`).join("\n")}`
+      ? `TypeScript errors (${tsErrors.length}):\n${tsErrors
+          .slice(0, 20)
+          .map((e) => {
+            const head = `  ${e.file}(${e.line},${e.col}) ${e.code}: ${e.message}`;
+            // The headline of a structural error is meaningless without the
+            // indented explanation underneath it.
+            return e.detail ? `${head}\n${e.detail.split("\n").slice(0, 12).join("\n")}` : head;
+          })
+          .join("\n")}`
       : "",
     testFailures.length > 0
       ? `Test failures:\n${testFailures.join("\n")}`
