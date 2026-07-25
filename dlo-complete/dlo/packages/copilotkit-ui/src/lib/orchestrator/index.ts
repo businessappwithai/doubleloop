@@ -51,6 +51,8 @@ export {
 export type { TestCommand, TestOutcome } from "./phases/finalize";
 export { withInstallLock, installDependencies, isStaleRegistryMetadataError } from "./npm";
 export type { InstallResult } from "./npm";
+export { buildExecutionReport, computeWallClockSeconds, isTerminalPhase } from "./report";
+export type { ExecutionReport } from "./report";
 export { spawnClaude, spawnClaudeAgent, claudeAuthFromConfig, checkClaudeCli } from "./subagents/claude";
 export { generateWithGemini, friendlyGeminiError } from "./subagents/gemini";
 export { getSubagentRunner } from "./subagents/pi";
@@ -79,12 +81,43 @@ export interface GateDecisionResult {
   status?: number;
 }
 
+/**
+ * Which decisions each gate kind understands.
+ *
+ * Validated BEFORE any state is touched. Two failure modes made this
+ * necessary: an unrecognised decision used to fall through every branch and
+ * return `accepted: true` while nothing happened (the console reported success
+ * and the pipeline sat on the gate forever), and for the permission gates a
+ * typo was worse than a no-op — anything that was not "APPROVE" was treated as
+ * a rejection, so a malformed request silently skipped a build/test/deploy step
+ * or failed the pipeline outright.
+ */
+const GATE_DECISIONS: Record<string, readonly string[]> = {
+  TOOL_INSTALL_PERMISSION: ["APPROVE", "USE_CLAUDE", "REJECT"],
+  TERMINAL_PERMISSION: ["APPROVE", "REJECT"],
+  DOMAIN_DOCUMENT: ["APPROVE", "STEER", "REJECT"],
+  DESIGN_REVIEW: ["APPROVE", "STEER", "REJECT"],
+  TRIPARTITE_PLAN: ["APPROVE", "STEER", "REJECT"],
+};
+
 export async function resolveGateDecision(input: GateDecisionInput): Promise<GateDecisionResult> {
   const state = await findPipelineByGateId(input.gateId);
   if (!state) return { accepted: false, error: "Gate not found", status: 404 };
 
   const gateKind = state.activeGate?.kind;
   const { decision, instructions } = input;
+
+  const allowed = gateKind ? GATE_DECISIONS[gateKind] : undefined;
+  if (!allowed) {
+    return { accepted: false, error: `Unknown gate kind: ${gateKind}`, status: 400 };
+  }
+  if (!allowed.includes(decision)) {
+    return {
+      accepted: false,
+      error: `Unknown decision "${decision}" for gate kind ${gateKind}. Expected one of: ${allowed.join(", ")}.`,
+      status: 400,
+    };
+  }
 
   // ── TOOL_INSTALL_PERMISSION (CodeWhale executor path) ─────────────────────
   if (gateKind === "TOOL_INSTALL_PERMISSION") {

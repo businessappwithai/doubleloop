@@ -124,7 +124,7 @@ export async function spawnClaudeAgent(opts: ClaudeAgentOptions): Promise<string
     const timeout = opts.timeoutMs
       ? setTimeout(() => {
           child.kill("SIGTERM");
-          if (opts.pipelineId) unregisterProcess(opts.pipelineId);
+          if (opts.pipelineId) unregisterProcess(opts.pipelineId, child);
           reject(new Error(`claude timed out after ${opts.timeoutMs}ms`));
         }, opts.timeoutMs)
       : null;
@@ -141,12 +141,12 @@ export async function spawnClaudeAgent(opts: ClaudeAgentOptions): Promise<string
     });
     child.on("error", (e) => {
       if (timeout) clearTimeout(timeout);
-      if (opts.pipelineId) unregisterProcess(opts.pipelineId);
+      if (opts.pipelineId) unregisterProcess(opts.pipelineId, child);
       reject(e);
     });
     child.on("close", (code: number | null) => {
       if (timeout) clearTimeout(timeout);
-      if (opts.pipelineId) unregisterProcess(opts.pipelineId);
+      if (opts.pipelineId) unregisterProcess(opts.pipelineId, child);
       if (code !== 0) {
         // Include both stderr and stdout — the actual build failure is often in stdout
         // while stderr only has the "no stdin data" warning or similar noise.

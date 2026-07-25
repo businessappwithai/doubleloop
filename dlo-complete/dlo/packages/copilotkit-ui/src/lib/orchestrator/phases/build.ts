@@ -147,6 +147,10 @@ ${MODULE_TEST_MANDATE}`;
     auth,
     ...(apiKey ? { apiKey } : {}),
     timeoutMs: MODULE_TIMEOUT_MS,
+    // Without this the fleet is invisible and unkillable: spawnClaudeAgent only
+    // streams output to the log store and registers the child for abort/stdin
+    // when it knows which pipeline the child belongs to.
+    pipelineId: state.pipelineId,
   });
 }
 
@@ -245,6 +249,7 @@ Otherwise list the specific errors that must be fixed (one per line).`,
       auth,
       ...(apiKey ? { apiKey } : {}),
       timeoutMs: 5 * 60_000,
+      pipelineId: state.pipelineId,
     });
     const passed = review.toLowerCase().includes("everything is fine");
     return { passed, critique: passed ? "" : review };
@@ -437,6 +442,7 @@ Do NOT give generic advice. Do NOT explain concepts. Fix THESE specific errors. 
       auth,
       ...(apiKey ? { apiKey } : {}),
       timeoutMs: 90_000,
+      pipelineId: state.pipelineId,
     });
     appendLog(state.pipelineId, `[Diagnose] "${mod.title || mod.moduleId}" — ${prescription.slice(0, 300)}`);
     return `Diagnostic prescription for "${stepDescription}":\n${prescription}`;

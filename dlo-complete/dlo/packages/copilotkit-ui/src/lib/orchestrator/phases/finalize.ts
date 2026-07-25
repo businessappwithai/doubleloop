@@ -62,6 +62,7 @@ Rules:
     auth,
     ...(apiKey ? { apiKey } : {}),
     timeoutMs: 15 * 60_000,
+    pipelineId: state.pipelineId,
   });
 }
 
@@ -482,6 +483,7 @@ Respond ONLY with valid JSON: {"passed":boolean,"override":boolean,"reasoning":"
       auth,
       ...(apiKey ? { apiKey } : {}),
       timeoutMs: 5 * 60_000,
+      pipelineId: state.pipelineId,
     });
     const jsonMatch = raw.match(/\{[\s\S]*?"passed"[\s\S]*?\}/);
     if (jsonMatch) {

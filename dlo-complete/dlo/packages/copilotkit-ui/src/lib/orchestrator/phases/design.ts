@@ -389,7 +389,6 @@ export async function runDesignBackground(pipelineId: string): Promise<void> {
     const architectureMd = stripOuterFence(archResult.value);
 
     appendLog(pipelineId, `[Design] Architecture.md complete — Step 2/3: Authoring Database.md…`);
-    appendLog(pipelineId, `[Design] Step 3/3: Authoring Implementation.md…`);
     const [dbResult] = await runner.runParallel([
       {
         name: "design-analyst:database",
@@ -402,6 +401,7 @@ export async function runDesignBackground(pipelineId: string): Promise<void> {
     }
     const databaseMd = stripOuterFence(dbResult.value);
 
+    appendLog(pipelineId, `[Design] Database.md complete — Step 3/3: Authoring Implementation.md…`);
     const [implResult] = await runner.runParallel([
       {
         name: "design-analyst:implementation",

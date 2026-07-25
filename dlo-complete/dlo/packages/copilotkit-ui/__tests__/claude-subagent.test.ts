@@ -240,3 +240,114 @@ describe("checkClaudeCli", () => {
     expect(result.detail).toMatch(/exited 127/);
   });
 });
+
+/**
+ * The observability wiring: an invocation is only visible in the console's log
+ * panel, and only killable from /abort, when it was told which pipeline it
+ * belongs to. Several fleet call sites omitted `pipelineId`, which is why the
+ * longest phase of a run produced no log output and no stoppable process.
+ */
+const logStore = await import("../src/lib/orchestrator/logStore");
+const registry = await import("../src/lib/orchestrator/processRegistry");
+
+/** A child the test drives by hand — it exits only when told to. */
+function manualChild() {
+  const child = new EventEmitter() as EventEmitter & Record<string, any>;
+  child.stdin = { end: vi.fn() };
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  return child;
+}
+
+/** spawnClaudeAgent awaits mkdir(cwd) before spawning, so registration lands a tick later. */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
+
+describe("spawnClaudeAgent — log streaming and process registration", () => {
+  const base = { prompt: "hello", model: "claude-sonnet-5", cwd: "/tmp/dlo-spawn-test" };
+
+  beforeEach(() => {
+    logStore.clearLogs("p1");
+    registry.unregisterProcess("p1");
+  });
+
+  test("streams stdout and stderr to the pipeline's log buffer", async () => {
+    spawnMock.mockImplementation(() =>
+      fakeChild({ stdout: "building the block editor\n", stderr: "npm warn deprecated\n" })
+    );
+
+    await spawnClaudeAgent({ ...base, pipelineId: "p1" });
+
+    expect(logStore.getLogs("p1")).toEqual(["building the block editor", "npm warn deprecated"]);
+  });
+
+  test("logs nothing when no pipeline is named", async () => {
+    spawnMock.mockImplementation(() => fakeChild({ stdout: "orphaned output\n" }));
+
+    await spawnClaudeAgent(base);
+
+    expect(logStore.getLogs("p1")).toEqual([]);
+  });
+
+  test("registers the child while it runs and releases it on exit", async () => {
+    const child = manualChild();
+    spawnMock.mockImplementation(() => child);
+
+    const run = spawnClaudeAgent({ ...base, pipelineId: "p1" });
+    await settle();
+    expect(registry.hasProcess("p1")).toBe(true);
+
+    child.stdout.emit("data", Buffer.from(JSON.stringify({ result: "ok" })));
+    child.emit("close", 0);
+
+    await expect(run).resolves.toBe("ok");
+    expect(registry.hasProcess("p1")).toBe(false);
+  });
+
+  test("releases the child after a failed run too", async () => {
+    spawnMock.mockImplementation(() => fakeChild({ code: 1, stderr: "boom" }));
+
+    await expect(spawnClaudeAgent({ ...base, pipelineId: "p1" })).rejects.toThrow(/claude exited 1/);
+
+    expect(registry.hasProcess("p1")).toBe(false);
+  });
+
+  test("releases the child when the spawn itself errors", async () => {
+    spawnMock.mockImplementation(() => fakeChild({ error: new Error("ENOENT") }));
+
+    await expect(spawnClaudeAgent({ ...base, pipelineId: "p1" })).rejects.toThrow("ENOENT");
+
+    expect(registry.hasProcess("p1")).toBe(false);
+  });
+
+  test("registers nothing when no pipeline is named", async () => {
+    await spawnClaudeAgent(base);
+    expect(registry.hasProcess("p1")).toBe(false);
+  });
+
+  test("concurrent invocations of one pipeline are all registered", async () => {
+    const children: any[] = [];
+    spawnMock.mockImplementation(() => {
+      const child = manualChild();
+      children.push(child);
+      return child;
+    });
+
+    const runs = [
+      spawnClaudeAgent({ ...base, pipelineId: "p1" }),
+      spawnClaudeAgent({ ...base, pipelineId: "p1" }),
+      spawnClaudeAgent({ ...base, pipelineId: "p1" }),
+    ];
+    await settle();
+    expect(registry.processCount("p1")).toBe(3);
+
+    // One finishing must not deregister the other two.
+    children[0]!.emit("close", 0);
+    await runs[0];
+    expect(registry.processCount("p1")).toBe(2);
+
+    children[1]!.emit("close", 0);
+    children[2]!.emit("close", 0);
+    await Promise.all(runs);
+    expect(registry.hasProcess("p1")).toBe(false);
+  });
+});

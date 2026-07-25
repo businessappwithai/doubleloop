@@ -2,9 +2,11 @@ import { getPipeline } from "@/lib/pipeline-helper";
 
 export async function GET(
   request: Request,
-  { params }: { params: { pipelineId: string } }
+  { params }: { params: Promise<{ pipelineId: string }> }
 ) {
-  const { pipelineId } = params;
+  // Next 15 hands route params in as a promise; reading them synchronously is
+  // only tolerated by a deprecation shim that logs an error on every request.
+  const { pipelineId } = await params;
 
   if (!pipelineId) {
     return new Response("Missing pipeline ID", { status: 400 });
