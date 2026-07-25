@@ -450,8 +450,16 @@ async function runOneModule(pipelineId: string, mod: PlanModule): Promise<boolea
 
     const deps = await ensureDependencies(latest);
     if (!deps.ok) {
-      appendLog(pipelineId, `[Module] "${label}" — dependency install failed (attempt ${attempt}), diagnosing…`);
-      critique = await diagnoseFailure(latest, mod, "npm install", deps.detail);
+      // A resolved "this version does not exist, the latest is X" explanation is
+      // already a precise instruction — pass it through verbatim rather than
+      // diluting it through the diagnostic agent, which cannot check a registry.
+      if (deps.detail.includes("DOES NOT EXIST")) {
+        appendLog(pipelineId, `[Module] "${label}" — package.json pins an unpublished version (attempt ${attempt})`);
+        critique = deps.detail;
+      } else {
+        appendLog(pipelineId, `[Module] "${label}" — dependency install failed (attempt ${attempt}), diagnosing…`);
+        critique = await diagnoseFailure(latest, mod, "npm install", deps.detail);
+      }
       console.log(`[Fleet] ${mod.moduleId} dependency install failed (attempt ${attempt}): ${deps.detail.slice(0, 200)}`);
       continue;
     }
