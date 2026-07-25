@@ -52,13 +52,49 @@ export function claudePermissionModeFromConfig(
   return valid.includes(configured) ? (configured as ClaudePermissionMode) : fallback;
 }
 
+/**
+ * Adjust a permission mode to what the host will actually accept.
+ *
+ * `bypassPermissions` becomes `--dangerously-skip-permissions`, and the Claude
+ * CLI refuses that outright when running with root/sudo privileges — it exits 1
+ * before doing any work. Containers (Docker, CI, hosted runners) commonly run
+ * as root, so the pipeline's own default permission mode would kill every
+ * subagent there. `acceptEdits` is the closest mode the CLI does allow as root:
+ * the agent still writes files, it just does not get the blanket bypass.
+ *
+ * The refusal is unconditional under root — setting IS_SANDBOX does NOT lift it
+ * (verified against CLI 2.1.220), so root is the only signal consulted here.
+ * Pure and parameterized so the decision is testable without becoming root.
+ */
+export function resolveHostPermissionMode(
+  requested: ClaudePermissionMode | undefined,
+  host: { isRoot: boolean }
+): { mode: ClaudePermissionMode | undefined; adjusted: boolean } {
+  if (requested === "bypassPermissions" && host.isRoot) {
+    return { mode: "acceptEdits", adjusted: true };
+  }
+  return { mode: requested, adjusted: false };
+}
+
 export async function spawnClaudeAgent(opts: ClaudeAgentOptions): Promise<string> {
   const cwd = opts.cwd || process.cwd();
   await mkdir(cwd, { recursive: true });
 
+  const { mode: permissionMode, adjusted } = resolveHostPermissionMode(opts.permissionMode, {
+    isRoot: typeof process.getuid === "function" && process.getuid() === 0,
+  });
+  if (adjusted) {
+    // Never silent: the run is not using the mode that was asked for.
+    const notice =
+      `[Claude] permission mode "bypassPermissions" is rejected by the CLI when running as root — ` +
+      `using "acceptEdits" instead for this invocation.`;
+    console.warn(notice);
+    if (opts.pipelineId) appendLog(opts.pipelineId, notice);
+  }
+
   const args = ["-p", opts.prompt, "--model", opts.model, "--output-format", "json"];
-  if (opts.permissionMode && opts.permissionMode !== "default") {
-    args.push("--permission-mode", opts.permissionMode);
+  if (permissionMode && permissionMode !== "default") {
+    args.push("--permission-mode", permissionMode);
   }
   for (const dir of opts.pluginDirs ?? []) {
     args.push("--plugin-dir", dir);

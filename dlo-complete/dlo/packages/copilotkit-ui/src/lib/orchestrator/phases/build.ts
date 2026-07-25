@@ -72,6 +72,28 @@ function buildProjectContext(state: PipelineState): string {
   return parts.join("\n\n");
 }
 
+/**
+ * Appended to every build-subagent prompt. The module prompt authored by the
+ * Design Analyst is supposed to ask for tests, but a build subagent only ever
+ * sees this one message — so the mandate is restated here rather than trusted
+ * to survive the design phase. TESTING_RUNNING fails an empty suite, so a
+ * module that ships no tests costs the pipeline a repair round later.
+ */
+const MODULE_TEST_MANDATE = `UNIT TESTS (MANDATORY — a module without them is incomplete work):
+- Write unit tests for every unit of behavior this module produces: each exported function, data-access
+  module, service, reducer, route handler and React component.
+- Cover, for each: the happy path asserted on real return values (never merely "did not throw"), every
+  branch you wrote, boundary and empty inputs, and the failure modes — assert the actual error/message,
+  not just that something threw.
+- Follow the test convention already established in this project (the same runner, directory and naming
+  the existing tests use). If this is the first module with tests, follow Architecture.md's
+  "## Testing Strategy" exactly.
+- Tests must be deterministic and hermetic: fake the network, database, child processes, clock and
+  randomness at the module boundary. Never call a real service or spawn a real binary in a test.
+- Never skip a test, never mark one todo, and never weaken an assertion to make it pass. If the code is
+  wrong, fix the code.
+- Run the test files you wrote before you finish, and leave them passing.`;
+
 function assignmentFor(state: PipelineState, moduleId: string): AgentAssignment {
   const fromDesign = state.agentDesign?.modules?.[moduleId];
   if (fromDesign) return fromDesign;
@@ -112,7 +134,9 @@ Rules:
 - Match Architecture.md and Database.md exactly (stack, conventions, schema).
 - ${assignment.systemPrompt ? assignment.systemPrompt : "Follow the project's established conventions."}
 - Do not modify files owned by other modules except where the touches list says so.
-- When done, verify your files parse/compile if a quick check is possible.`;
+- When done, verify your files parse/compile if a quick check is possible.
+
+${MODULE_TEST_MANDATE}`;
 
   await spawnClaudeAgent({
     prompt,
@@ -156,7 +180,9 @@ Requirements:
 - Create all listed files with complete, production-ready code
 - Match the architecture and database contracts above
 - Include error handling
-- Do not use placeholder or TODO comments — implement fully`;
+- Do not use placeholder or TODO comments — implement fully
+
+${MODULE_TEST_MANDATE}`;
 
   await new Promise<void>((resolve, reject) => {
     const child = spawn("codewhale", ["exec", "--auto", cwPrompt], { cwd: state.workspaceDir, env });
@@ -328,6 +354,31 @@ Do NOT give generic advice. Do NOT explain concepts. Fix THESE specific errors. 
 }
 
 /**
+ * Serializes npm installs per workspace directory.
+ *
+ * The fleet runs modules in parallel inside ONE workspace, so without this the
+ * concurrent `npm install` calls race on the same node_modules and
+ * package-lock.json — npm corrupts the tree or fails with ENOTEMPTY/EEXIST, and
+ * the module gets blamed for a failure it did not cause. Keyed by directory so
+ * two pipelines with separate workspaces still install concurrently.
+ */
+const installLocks = new Map<string, Promise<unknown>>();
+
+export function withInstallLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const previous = installLocks.get(key) ?? Promise.resolve();
+  // Chain onto the previous holder, ignoring its outcome: one module's failed
+  // install must not reject the next module's turn.
+  const run = previous.then(fn, fn);
+  // The queue tail must never be a rejected promise or it turns into an
+  // unhandled rejection the next waiter inherits.
+  installLocks.set(key, run.then(
+    () => undefined,
+    () => undefined
+  ));
+  return run;
+}
+
+/**
  * Make sure the workspace's npm dependencies are installed before exit
  * clauses run — otherwise typecheck/build clauses fail with "cannot find
  * module" no matter how good the generated code is, and retries fly blind.
@@ -335,19 +386,21 @@ Do NOT give generic advice. Do NOT explain concepts. Fix THESE specific errors. 
  */
 async function ensureDependencies(state: PipelineState): Promise<{ ok: boolean; detail: string }> {
   if (!existsSync(join(state.workspaceDir, "package.json"))) return { ok: true, detail: "" };
-  try {
-    await execFileAsync("npm", ["install", "--prefer-offline", "--no-audit", "--no-fund"], {
-      cwd: state.workspaceDir,
-      timeout: 300_000,
-      env: { ...process.env },
-    });
-    return { ok: true, detail: "" };
-  } catch (e: any) {
-    return {
-      ok: false,
-      detail: `npm install failed: ${((e.stderr || "") + (e.stdout || "") || e.message).slice(-1200)}`,
-    };
-  }
+  return withInstallLock(state.workspaceDir, async () => {
+    try {
+      await execFileAsync("npm", ["install", "--prefer-offline", "--no-audit", "--no-fund"], {
+        cwd: state.workspaceDir,
+        timeout: 300_000,
+        env: { ...process.env },
+      });
+      return { ok: true, detail: "" };
+    } catch (e: any) {
+      return {
+        ok: false,
+        detail: `npm install failed: ${((e.stderr || "") + (e.stdout || "") || e.message).slice(-1200)}`,
+      };
+    }
+  });
 }
 
 /** Run a module's command exit clauses. Non-command kinds are skipped here. */

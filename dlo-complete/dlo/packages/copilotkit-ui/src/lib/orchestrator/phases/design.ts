@@ -53,6 +53,21 @@ you MUST default to TanStack Start (React, file-based routing, server functions,
 with PostgreSQL as the database. If the research clearly mandates a different stack (e.g. Android/Kotlin,
 CLI tool), honor the research instead and say so explicitly.`;
 
+/**
+ * The generated application must ship its own test suite — the pipeline's
+ * TESTING_RUNNING phase treats "no tests" as a failure, not a pass, so a design
+ * that does not plan tests produces a pipeline that cannot finish. Every design
+ * prompt carries this rule verbatim.
+ */
+const TEST_RULE = `TEST RULE (NON-NEGOTIABLE): the application you are designing MUST ship with an extensive
+unit-test suite, and the plan must make that happen by construction — tests are not a follow-up task.
+- Every unit of behavior (each exported function, data-access module, service, reducer, route handler and
+  React component) gets its own unit tests covering the happy path, every branch, boundary/empty values,
+  and the failure modes (assert the actual error, not merely that something threw).
+- Tests are deterministic: no live network, no real database, no real child processes, no real clock —
+  fake them at the module boundary.
+- No test may be skipped, and no test-runner flag may be used that lets an EMPTY suite report success.`;
+
 function architecturePrompt(state: PipelineState): string {
   return `You are the Design Analyst agent of the Double-Loop Orchestrator, authoring Architecture.md.
 
@@ -72,8 +87,23 @@ Author the COMPLETE contents of Architecture.md for this project. Respond with O
                               declared interfaces or the central orchestrator)
 ## Plumbing & Conventions    (error handling, configuration, logging, dependency wiring, folder layout —
                               include representative code snippets for the chosen stack)
-## Best Practices            (testing strategy, type safety, security, performance)
+## Testing Strategy          (MANDATORY, see TEST RULE below)
+## Best Practices            (type safety, security, performance)
 ## Deployment Shape          (how the app runs locally and in production)
+
+${TEST_RULE}
+
+The "## Testing Strategy" section must be concrete enough to build against. It MUST state:
+- the test runner and assertion library for the chosen stack, plus the exact dev dependencies and
+  config files needed (for a Vite/React/TanStack stack: vitest, @testing-library/react, jsdom,
+  vitest.config.ts and vitest.setup.ts);
+- the file-naming and location convention for tests (state ONE convention and stick to it);
+- the \`test\` script in package.json, which MUST run the whole suite non-interactively and MUST NOT
+  pass a flag that makes an empty suite succeed;
+- what each layer must have covered: pure functions/parsers, data-access modules (against a fake or
+  in-memory driver), service/business logic, and React components (render + interact + assert output);
+- how external systems (network, database, child processes, clock, randomness) are faked so tests are
+  deterministic and never reach a real service.
 
 Be concrete and complete — this document is the build contract for the implementation subagents.`;
 }
@@ -141,11 +171,13 @@ the markdown document (no outer code fence, no preamble). Required sections:
       "dependsOn": [],
       "estimatedComplexity": "easy|medium|hard",
       "maxAttempts": 3,
-      "touches": ["every file this module creates or modifies"],
-      "acceptance": ["verifiable acceptance criteria"],
+      "touches": ["every file this module creates or modifies, INCLUDING its test files"],
+      "acceptance": ["verifiable acceptance criteria — each one checkable by running a command"],
       "exitClauses": [
         {"clauseId": "c1", "description": "typecheck passes", "kind": "command",
-         "argv": ["npx", "tsc", "--noEmit"], "expect": {"exitCode": 0}}
+         "argv": ["npx", "tsc", "--noEmit"], "expect": {"exitCode": 0}},
+        {"clauseId": "c2", "description": "this module's unit tests pass", "kind": "command",
+         "argv": ["npx", "vitest", "run", "tests/<this-module-test-file>.test.ts"], "expect": {"exitCode": 0}}
       ]
     }
   ]
@@ -158,24 +190,71 @@ PLAN RULES:
   (dev/build/test), the framework config files, and the entry point, so the app is installable and
   buildable from module 1. For TanStack Start that means package.json, app.config.ts, tsconfig.json,
   and the src/routes entry files.
+- The SECOND module (dependsOn the scaffold, and a dependency of every module that ships tests) MUST
+  install and configure the test harness described in Architecture.md "## Testing Strategy": the test
+  dependencies, the runner config file, the setup file, and the package.json \`test\` script. That
+  script must run the entire suite non-interactively and must NOT use a flag that lets an empty suite
+  pass (no --passWithNoTests).
 - One module MUST implement the database layer exactly per Database.md (migrations from the DDL block,
   a db client module, typed data access).
 - dependsOn must form a DAG (no cycles). Modules with no dependency relation run IN PARALLEL — split
   work to maximize safe parallelism (different modules must not touch the same files).
 - Every "touches" list must be exhaustive for that module.
-- The JSON must be valid and complete. It is parsed programmatically.`;
+- The JSON must be valid and complete. It is parsed programmatically.
+
+${TEST_RULE}
+
+PER-MODULE TEST RULES (these are what make the suite exist):
+- EVERY module that produces behavior (i.e. every module after the scaffold and harness modules) MUST
+  list its own test files in "touches" and MUST carry an exit clause that runs exactly those test files.
+- EVERY such module's "acceptance" list MUST include at least one criterion of the form
+  "unit tests in <path> pass and cover <the behaviors this module adds>".
+- The module "prompt" text MUST itself tell the build subagent to write those unit tests — the prompt is
+  the only instruction that subagent receives, so a prompt that omits tests produces a module with none.
+- Do NOT collect all tests into one trailing "write the tests" module. Tests ship with the module that
+  produces the behavior, so a failing module is caught by its own exit clause.`;
 }
 
-/** Extract the ```json implementation-plan block (or best-effort JSON) from Implementation.md. */
+/**
+ * Extract the ```json implementation-plan block from Implementation.md.
+ *
+ * The document routinely contains OTHER fenced json blocks (an example
+ * package.json, a config sample, a tsconfig snippet), and those often appear
+ * before the plan. Selecting the first json fence therefore picks up the wrong
+ * block and the whole design phase fails on a document that is actually fine.
+ * Selection order: the fence explicitly tagged `implementation-plan` wins;
+ * otherwise the first json fence that parses AND carries a modules array.
+ */
 export function parseImplementationPlan(implementationMd: string): any {
-  const fenced = implementationMd.match(/```json[^\n]*\n([\s\S]*?)```/);
-  const candidate = fenced?.[1]?.trim();
-  if (candidate) {
+  const fences = [...implementationMd.matchAll(/```json([^\n]*)\n([\s\S]*?)```/g)].map((m) => ({
+    tag: (m[1] ?? "").trim(),
+    body: (m[2] ?? "").trim(),
+  }));
+  if (fences.length === 0) {
+    throw new Error("Implementation.md is missing the ```json implementation-plan block.");
+  }
+
+  const tagged = fences.find((f) => f.tag.includes("implementation-plan"));
+  if (tagged) {
     try {
-      return JSON.parse(candidate);
+      return JSON.parse(tagged.body);
     } catch (e: any) {
       throw new Error(`Implementation.md's json plan block is invalid JSON: ${e.message}`);
     }
+  }
+
+  // Untagged: the plan is the block that actually looks like a plan.
+  let firstParseError = "";
+  for (const fence of fences) {
+    try {
+      const parsed = JSON.parse(fence.body);
+      if (parsed && Array.isArray(parsed.modules)) return parsed;
+    } catch (e: any) {
+      if (!firstParseError) firstParseError = e.message;
+    }
+  }
+  if (firstParseError) {
+    throw new Error(`Implementation.md's json plan block is invalid JSON: ${firstParseError}`);
   }
   throw new Error("Implementation.md is missing the ```json implementation-plan block.");
 }
@@ -218,6 +297,56 @@ export function validatePlanDag(plan: any): string[] {
   }
   if (visited !== modules.length) errors.push("dependsOn graph contains a cycle.");
   return errors;
+}
+
+/** Does this path look like a test file under any of the conventions we ask for? */
+function isTestPath(path: string): boolean {
+  return /(?:^|[\\/])(?:tests?|__tests__|spec)[\\/]/i.test(path)
+    || /\.(?:test|spec)\.[cm]?[jt]sx?$/i.test(path);
+}
+
+/**
+ * Non-blocking audit of the plan's test coverage. Returns one warning per
+ * module that produces behavior but plans no tests for it.
+ *
+ * Deliberately NOT part of validatePlanDag: a plan missing tests is still a
+ * structurally runnable plan, and failing the design phase over it would strand
+ * the pipeline. The warnings are surfaced in the logs and the shortfall is
+ * enforced for real in TESTING_RUNNING, which refuses to pass an empty suite.
+ */
+export function validatePlanTestCoverage(plan: any): string[] {
+  const warnings: string[] = [];
+  const modules: any[] = plan?.modules || [];
+  // The scaffold module and the test-harness module legitimately ship no tests
+  // of their own: they exist so that everything after them can be tested.
+  const setupModules = new Set(
+    modules
+      .filter((m) => {
+        const text = `${m.title ?? ""} ${m.prompt ?? ""}`.toLowerCase();
+        const touches: string[] = m.touches || [];
+        const isScaffold = touches.some((t) => /(?:^|[\\/])package\.json$/i.test(t));
+        const isHarness = /\b(?:test harness|test setup|testing setup|vitest|jest config)\b/.test(text);
+        return isScaffold || isHarness;
+      })
+      .map((m) => m.moduleId)
+  );
+
+  for (const m of modules) {
+    if (setupModules.has(m.moduleId)) continue;
+    const touches: string[] = m.touches || [];
+    if (!touches.some(isTestPath)) {
+      warnings.push(`Module ${m.moduleId} ("${m.title ?? ""}") lists no test files in touches.`);
+      continue;
+    }
+    const clauses: any[] = m.exitClauses || [];
+    const runsTests = clauses.some((c) =>
+      Array.isArray(c?.argv) && c.argv.some((a: unknown) => typeof a === "string" && /\b(?:vitest|jest|test)\b/i.test(a))
+    );
+    if (!runsTests) {
+      warnings.push(`Module ${m.moduleId} ("${m.title ?? ""}") has test files but no exit clause that runs them.`);
+    }
+  }
+  return warnings;
 }
 
 export async function runDesignBackground(pipelineId: string): Promise<void> {
@@ -291,6 +420,10 @@ export async function runDesignBackground(pipelineId: string): Promise<void> {
     if (dagErrors.length) {
       throw new Error(`Implementation plan invalid: ${dagErrors.join(" | ")}`);
     }
+
+    // Surfaced, never silently tolerated: the gap is enforced in TESTING_RUNNING.
+    const testWarnings = validatePlanTestCoverage(engineeringPlan);
+    for (const w of testWarnings) appendLog(pipelineId, `[Design] ⚠ Test coverage gap in plan — ${w}`);
 
     const fresh = await getPipeline(pipelineId);
     if (!fresh || fresh.phase === "ABORTED" || fresh.phase === "FAILED") return;

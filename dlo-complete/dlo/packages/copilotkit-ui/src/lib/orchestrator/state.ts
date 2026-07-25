@@ -166,6 +166,10 @@ export interface PipelineState {
     durationMs: number;
     supervisorReasoning?: string;
     fixRounds?: number;
+    /** How many individual tests actually executed. 0 is always a failure. */
+    testsRun?: number;
+    /** How many times the Test Author subagent had to build/extend the suite. */
+    testAuthorRounds?: number;
   };
   deployResults?: {
     deployed: boolean;

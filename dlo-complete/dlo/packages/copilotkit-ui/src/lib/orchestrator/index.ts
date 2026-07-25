@@ -30,7 +30,7 @@ import {
 // Re-export the whole orchestrator surface.
 export * from "./state";
 export { runResearchBackground } from "./phases/research";
-export { runDesignBackground, parseImplementationPlan, validatePlanDag } from "./phases/design";
+export { runDesignBackground, parseImplementationPlan, validatePlanDag, validatePlanTestCoverage } from "./phases/design";
 export { runCeoReviewBackground, reviewDocument, parseSuggestions } from "./phases/review";
 export { runExecutionBackground } from "./phases/build";
 export {
@@ -40,12 +40,16 @@ export {
   runDeployBackground,
   runAppLaunchBackground,
   runToolInstallScript,
+  runTestAuthorSubagent,
+  assessTestOutcome,
   scaffoldMissingInfrastructure,
   detectDatabaseNeeded,
   detectTestCommand,
   detectLaunchCommand,
   detectBuildCommand,
 } from "./phases/finalize";
+export type { TestCommand, TestOutcome } from "./phases/finalize";
+export { withInstallLock } from "./phases/build";
 export { spawnClaude, spawnClaudeAgent, claudeAuthFromConfig, checkClaudeCli } from "./subagents/claude";
 export { generateWithGemini, friendlyGeminiError } from "./subagents/gemini";
 export { getSubagentRunner } from "./subagents/pi";

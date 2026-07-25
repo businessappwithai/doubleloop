@@ -29,6 +29,8 @@ import { appendLog } from "../logStore";
 
 const execFileAsync = promisify(execFile);
 const MAX_FIX_ROUNDS = 3;
+/** How many times the Test Author subagent may be asked to build the suite. */
+const MAX_TEST_AUTHOR_ROUNDS = 2;
 
 // ─── Fixer subagent ──────────────────────────────────────────────────────────
 
@@ -59,6 +61,69 @@ Rules:
     auth,
     ...(apiKey ? { apiKey } : {}),
     timeoutMs: 15 * 60_000,
+  });
+}
+
+// ─── Test-author subagent ────────────────────────────────────────────────────
+
+/**
+ * Builds the missing test suite for a generated application.
+ *
+ * Runs when TESTING_RUNNING finds no test command at all, or finds one that
+ * executes zero tests. Both are defects in what the fleet produced, so the
+ * pipeline repairs them here instead of reporting a green run over an empty
+ * suite. Claude Code only — the fleet's coding harness for this pipeline.
+ */
+export async function runTestAuthorSubagent(
+  state: PipelineState,
+  reason: "no-test-command" | "empty-suite"
+): Promise<void> {
+  const { auth, apiKey } = claudeAuthFromConfig(state.config);
+  const permissionMode = claudePermissionModeFromConfig(state.config, "executor", "acceptEdits");
+  const model = state.config?.providers?.executor?.model || "claude-haiku-4-5-20251001";
+  const architecture = state.designDocs?.architecture?.markdown ?? "";
+  const testingStrategy =
+    architecture.match(/##\s*Testing Strategy[\s\S]*?(?=\n##\s|$)/i)?.[0]?.slice(0, 3000) ?? "";
+
+  const situation =
+    reason === "no-test-command"
+      ? `This application has NO usable test command: package.json has no real \`test\` script and no test runner is installed.`
+      : `This application has a test command, but running it executed ZERO tests — the suite is empty or matches no files.`;
+
+  await spawnClaudeAgent({
+    prompt: `You are the Test Author subagent of the Double-Loop Orchestrator, working in the generated
+application at the current working directory.
+
+Project: ${state.projectName}
+
+${situation}
+
+Your job is to make this application genuinely tested. Do ALL of the following:
+
+1. Install and configure the test harness if it is missing: the runner, the assertion/DOM testing
+   libraries, the config file and the setup file. For a Vite/React/TanStack project that means vitest,
+   @testing-library/react, @testing-library/jest-dom, jsdom, a vitest.config.ts with the jsdom
+   environment and the setup file registered, and a vitest.setup.ts.
+2. Set package.json's \`test\` script to run the WHOLE suite non-interactively (e.g. "vitest run").
+   It must NOT contain --passWithNoTests, --watch, or any flag under which an empty suite succeeds.
+3. Read the application's actual source and write extensive unit tests for every unit of behavior that
+   exists: each exported function, data-access module, service, reducer, route handler and React
+   component. For each unit cover the happy path asserted on real return values, every branch, boundary
+   and empty inputs, and the failure modes (assert the specific error, not merely that something threw).
+4. Keep tests deterministic and hermetic — fake the network, database, child processes, clock and
+   randomness at the module boundary. No test may reach a real service or spawn a real binary.
+5. Never skip a test and never weaken an assertion to make it pass. If a test exposes a real bug in the
+   application, fix the application.
+6. Run the suite yourself and leave it passing with a non-zero number of tests executed.
+${testingStrategy ? `\nArchitecture.md's testing contract for this project:\n${testingStrategy}\n` : ""}
+Report at the end how many test files and test cases you added.`,
+    model,
+    cwd: state.workspaceDir,
+    permissionMode,
+    auth,
+    ...(apiKey ? { apiKey } : {}),
+    timeoutMs: 20 * 60_000,
+    pipelineId: state.pipelineId,
   });
 }
 
@@ -137,7 +202,8 @@ export async function scaffoldMissingInfrastructure(workspaceDir: string, projec
         dev: "vite",
         build: "tsc -b && vite build",
         preview: "vite preview",
-        test: "vitest run --passWithNoTests",
+        // No --passWithNoTests: an empty suite must fail so the Test Author runs.
+        test: "vitest run",
       },
       dependencies: { react: "^18.3.1", "react-dom": "^18.3.1" },
       devDependencies: {
@@ -278,27 +344,84 @@ async function runMigrations(state: PipelineState, dbUrl: string, containerId: s
   return "No migration files found";
 }
 
-export async function detectTestCommand(workspaceDir: string): Promise<{ cmd: string; args: string[] } | null> {
+export interface TestCommand {
+  cmd: string;
+  args: string[];
+  /** Where the command came from, for honest reporting in the logs. */
+  source: "gradle" | "package-script" | "vitest" | "jest";
+}
+
+/**
+ * Resolve how this workspace runs its tests.
+ *
+ * Deliberately does NOT pass --passWithNoTests: a generated application with no
+ * tests must surface as a failure that the test-author subagent repairs, not as
+ * a green run. (The old behavior let an app with zero tests report "tests
+ * passed", which is exactly the outcome the testing policy forbids.)
+ */
+export async function detectTestCommand(workspaceDir: string): Promise<TestCommand | null> {
   if (existsSync(join(workspaceDir, "gradlew"))) {
-    return { cmd: "./gradlew", args: ["testDebugUnitTest", "--continue"] };
+    return { cmd: "./gradlew", args: ["testDebugUnitTest", "--continue"], source: "gradle" };
   }
   if (existsSync(join(workspaceDir, "build.gradle.kts")) || existsSync(join(workspaceDir, "build.gradle"))) {
-    return { cmd: "gradle", args: ["testDebugUnitTest", "--continue"] };
+    return { cmd: "gradle", args: ["testDebugUnitTest", "--continue"], source: "gradle" };
   }
   try {
     const pkg = JSON.parse(await readFile(join(workspaceDir, "package.json"), "utf-8"));
-    const noOpTest = /^echo.*no test/i;
+    const noOpTest = /^\s*echo\b.*\bno test/i;
     if (pkg.scripts?.test && !noOpTest.test(pkg.scripts.test)) {
-      return { cmd: "npm", args: ["test", "--", "--passWithNoTests"] };
+      return { cmd: "npm", args: ["test"], source: "package-script" };
     }
     if (pkg.devDependencies?.vitest || pkg.dependencies?.vitest) {
-      return { cmd: "npx", args: ["vitest", "run", "--passWithNoTests"] };
+      return { cmd: "npx", args: ["vitest", "run"], source: "vitest" };
     }
     if (pkg.devDependencies?.jest || pkg.dependencies?.jest) {
-      return { cmd: "npx", args: ["jest", "--passWithNoTests"] };
+      return { cmd: "npx", args: ["jest"], source: "jest" };
     }
   } catch { /* no package.json */ }
   return null;
+}
+
+export interface TestOutcome {
+  /** Number of individual tests the runner reported executing. */
+  testsRun: number;
+  /** The runner explicitly reported that it found no test files/suites. */
+  noTestsFound: boolean;
+}
+
+/**
+ * Read a runner's output for how many tests actually executed.
+ *
+ * A zero-exit run proves nothing on its own — vitest and jest both exit 0 when
+ * a `--passWithNoTests` suite matched nothing, and a suite that matched nothing
+ * is the failure mode this pipeline exists to prevent. Recognizes vitest
+ * ("Tests  12 passed (12)"), jest ("Tests: 3 passed, 3 total") and Gradle.
+ */
+export function assessTestOutcome(output: string): TestOutcome {
+  const reportedEmpty = /no test (?:files|suites)? ?found|no tests found/i.test(output);
+
+  let testsRun = 0;
+
+  // vitest: "Tests  12 passed | 1 failed (13)" / "Tests  12 passed (12)"
+  const vitest = output.match(/^\s*Tests\s+(.+?)\((\d+)\)\s*$/m);
+  if (vitest?.[2]) testsRun = Math.max(testsRun, Number(vitest[2]));
+  if (!testsRun) {
+    // vitest without the trailing total, e.g. "Tests  4 passed"
+    const vitestLoose = output.match(/^\s*Tests\s+(\d+)\s+passed/m);
+    if (vitestLoose?.[1]) testsRun = Math.max(testsRun, Number(vitestLoose[1]));
+  }
+
+  // jest: "Tests:       3 passed, 1 failed, 4 total"
+  const jest = output.match(/^\s*Tests:\s+.*?(\d+)\s+total\s*$/m);
+  if (jest?.[1]) testsRun = Math.max(testsRun, Number(jest[1]));
+
+  // gradle/junit: "5 tests completed"
+  const gradle = output.match(/(\d+)\s+tests?\s+completed/i);
+  if (gradle?.[1]) testsRun = Math.max(testsRun, Number(gradle[1]));
+
+  // No counted tests is itself the signal; an explicit "no test files found"
+  // only confirms it. Either way the suite proved nothing.
+  return { testsRun, noTestsFound: testsRun === 0 || reportedEmpty };
 }
 
 export async function detectLaunchCommand(workspaceDir: string): Promise<{ cmd: string; args: string[]; port: number } | null> {
@@ -646,24 +769,20 @@ export async function runTestingBackground(
   if (!state) return;
 
   try {
-    const testCmd = await detectTestCommand(state.workspaceDir);
+    const detected = await detectTestCommand(state.workspaceDir);
 
-    if (!testCmd) {
-      console.log(`[Test] No test framework detected for ${pipelineId}, skipping to deploy`);
-      state.phase = "DEPLOY_RUNNING";
-      pushPhaseHistory(state, "DEPLOY_RUNNING");
-      state.activeGate = null;
-      state.lastTransitionAt = new Date().toISOString();
-      await savePipeline(state);
-      void runDeployBackground(pipelineId, false);
-      return;
-    }
-
-    const testCommands = [
-      `cd ${state.workspaceDir}`,
-      `npm install`,
-      `${testCmd.cmd} ${testCmd.args.join(" ")}`,
-    ];
+    const testCommands = detected
+      ? [
+          `cd ${state.workspaceDir}`,
+          `npm install`,
+          `${detected.cmd} ${detected.args.join(" ")}`,
+        ]
+      : [
+          `cd ${state.workspaceDir}`,
+          `# No test suite found — the Test Author subagent will build one first`,
+          `npm install`,
+          `npx vitest run`,
+        ];
 
     if (!hasPermission) {
       state.activeGate = {
@@ -671,7 +790,7 @@ export async function runTestingBackground(
         kind: "TERMINAL_PERMISSION",
         exhibits: [
           "Run Test Suite",
-          `Permission needed to install dependencies and run the test suite (failures are auto-repaired by the Fixer subagent, up to ${MAX_FIX_ROUNDS} rounds):\n\n${testCommands.join("\n")}`,
+          `Permission needed to install dependencies and run the test suite (failures are auto-repaired by the Fixer subagent, up to ${MAX_FIX_ROUNDS} rounds${detected ? "" : "; the suite is missing, so the Test Author subagent writes it first"}):\n\n${testCommands.join("\n")}`,
           "Approve to run tests, or Reject to skip testing and proceed to app launch.",
         ],
         context: { nextAction: "run-tests" },
@@ -683,6 +802,41 @@ export async function runTestingBackground(
     }
 
     const startTime = Date.now();
+    let authorRounds = 0;
+
+    // A generated app with no test command is a defect in what the fleet built,
+    // not a reason to skip testing — author the suite, then re-detect.
+    let testCmd = detected;
+    if (!testCmd) {
+      appendLog(pipelineId, "[Test] No test command found — running the Test Author subagent to build the suite…");
+      authorRounds++;
+      try {
+        await runTestAuthorSubagent(state, "no-test-command");
+      } catch (e: any) {
+        appendLog(pipelineId, `[Test] Test Author subagent failed: ${e.message?.slice(0, 300)}`);
+      }
+      testCmd = await detectTestCommand(state.workspaceDir);
+    }
+
+    if (!testCmd) {
+      // Report the shortfall honestly rather than letting an untested app look tested.
+      const detail = "No test suite exists and the Test Author subagent could not create one.";
+      appendLog(pipelineId, `[Test] ${detail} Recording a FAILED test result and proceeding to deploy.`);
+      state.testResults = {
+        passed: false,
+        output: detail,
+        durationMs: Date.now() - startTime,
+        fixRounds: 0,
+      };
+      state.phase = "DEPLOY_RUNNING";
+      pushPhaseHistory(state, "DEPLOY_RUNNING");
+      state.activeGate = null;
+      state.lastTransitionAt = new Date().toISOString();
+      await savePipeline(state);
+      void runDeployBackground(pipelineId, false);
+      return;
+    }
+
     const dbEnv = {
       ...process.env,
       DATABASE_URL: state.dbConnectionString || "",
@@ -700,6 +854,7 @@ export async function runTestingBackground(
     let testOutput = "";
     let rawPassed = false;
     let fixRounds = 0;
+    let testsRun = 0;
 
     // Test → on failure, fixer subagent → retest (up to MAX_FIX_ROUNDS).
     for (let round = 0; round <= MAX_FIX_ROUNDS; round++) {
@@ -712,12 +867,42 @@ export async function runTestingBackground(
         });
         testOutput = result.stdout + result.stderr;
         if (testOutput) appendLog(pipelineId, testOutput.slice(-600));
+
+        // Exit 0 is not enough: a suite that executed nothing proves nothing.
+        const outcome = assessTestOutcome(testOutput);
+        testsRun = outcome.testsRun;
+        if (outcome.noTestsFound) {
+          if (authorRounds < MAX_TEST_AUTHOR_ROUNDS) {
+            authorRounds++;
+            appendLog(
+              pipelineId,
+              `[Test] The suite ran but executed 0 tests — running the Test Author subagent (round ${authorRounds}/${MAX_TEST_AUTHOR_ROUNDS})…`
+            );
+            try {
+              await runTestAuthorSubagent(state, "empty-suite");
+              await execFileAsync("npm", ["install", "--prefer-offline", "--no-audit", "--no-fund"], {
+                cwd: state.workspaceDir, timeout: 300_000, env: dbEnv,
+              }).catch(() => { /* ignore */ });
+              // The author may have introduced the runner or changed the script.
+              testCmd = (await detectTestCommand(state.workspaceDir)) ?? testCmd;
+            } catch (e: any) {
+              appendLog(pipelineId, `[Test] Test Author subagent failed: ${e.message?.slice(0, 300)}`);
+            }
+            rawPassed = false;
+            continue;
+          }
+          rawPassed = false;
+          appendLog(pipelineId, "[Test] Suite still executes 0 tests after all Test Author rounds — recording FAILED.");
+          break;
+        }
+
         rawPassed = true;
-        appendLog(pipelineId, "[Test] Tests PASSED");
+        appendLog(pipelineId, `[Test] Tests PASSED (${testsRun} test${testsRun === 1 ? "" : "s"} executed)`);
         break;
       } catch (err: any) {
         testOutput = (err.stdout || "") + (err.stderr || "");
         rawPassed = false;
+        testsRun = assessTestOutcome(testOutput).testsRun;
         appendLog(pipelineId, `[Test] Tests FAILED (round ${round + 1}): ${testOutput.slice(-400) || err.message?.slice(0, 400)}`);
         if (round < MAX_FIX_ROUNDS) {
           fixRounds++;
@@ -739,8 +924,15 @@ export async function runTestingBackground(
 
     appendLog(pipelineId, "[Test] Supervisor reviewing test output…");
     const supervisorResult = await supervisorReviewTestOutput(testOutput, state);
-    const finalPassed = rawPassed || supervisorResult.override;
-    if (supervisorResult.override) {
+
+    // The supervisor may forgive an environment-caused failure, but it may NOT
+    // forgive an empty suite: "no tests ran" is the one verdict no reasoning can
+    // turn green, or the pipeline would report an untested app as tested.
+    const overrideAllowed = supervisorResult.override && testsRun > 0;
+    const finalPassed = rawPassed || overrideAllowed;
+    if (supervisorResult.override && !overrideAllowed) {
+      appendLog(pipelineId, "[Test] Supervisor override REJECTED — 0 tests executed, so there is nothing to override.");
+    } else if (overrideAllowed) {
       appendLog(pipelineId, `[Test] Supervisor overrode failure: ${supervisorResult.reasoning?.slice(0, 200)}`);
     }
 
@@ -750,6 +942,8 @@ export async function runTestingBackground(
       durationMs,
       supervisorReasoning: supervisorResult.reasoning,
       fixRounds,
+      testsRun,
+      testAuthorRounds: authorRounds,
     };
     state.phase = "DEPLOY_RUNNING";
     pushPhaseHistory(state, "DEPLOY_RUNNING");
@@ -757,7 +951,11 @@ export async function runTestingBackground(
     state.lastTransitionAt = new Date().toISOString();
     await savePipeline(state);
 
-    appendLog(pipelineId, `[Test] Tests ${finalPassed ? "passed ✓" : "failed"} (${durationMs}ms, ${fixRounds} fix round(s)) — proceeding to deploy`);
+    appendLog(
+      pipelineId,
+      `[Test] Tests ${finalPassed ? "passed ✓" : "failed"} — ${testsRun} test${testsRun === 1 ? "" : "s"} executed ` +
+        `(${durationMs}ms, ${fixRounds} fix round(s), ${authorRounds} test-author round(s)) — proceeding to deploy`
+    );
     void runDeployBackground(pipelineId, false);
   } catch (err: any) {
     const s = await getPipeline(pipelineId);
