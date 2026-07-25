@@ -28,6 +28,7 @@ import {
 } from "../state";
 import { spawnClaudeAgent, claudeAuthFromConfig, claudePermissionModeFromConfig } from "../subagents/claude";
 import { runDbProvisioningBackground, runBuildBackground, scaffoldMissingInfrastructure } from "./finalize";
+import { installDependencies } from "../npm";
 import { appendLog } from "../logStore";
 
 const execFileAsync = promisify(execFile);
@@ -72,6 +73,28 @@ function buildProjectContext(state: PipelineState): string {
   return parts.join("\n\n");
 }
 
+/**
+ * Appended to every build-subagent prompt. The module prompt authored by the
+ * Design Analyst is supposed to ask for tests, but a build subagent only ever
+ * sees this one message — so the mandate is restated here rather than trusted
+ * to survive the design phase. TESTING_RUNNING fails an empty suite, so a
+ * module that ships no tests costs the pipeline a repair round later.
+ */
+const MODULE_TEST_MANDATE = `UNIT TESTS (MANDATORY — a module without them is incomplete work):
+- Write unit tests for every unit of behavior this module produces: each exported function, data-access
+  module, service, reducer, route handler and React component.
+- Cover, for each: the happy path asserted on real return values (never merely "did not throw"), every
+  branch you wrote, boundary and empty inputs, and the failure modes — assert the actual error/message,
+  not just that something threw.
+- Follow the test convention already established in this project (the same runner, directory and naming
+  the existing tests use). If this is the first module with tests, follow Architecture.md's
+  "## Testing Strategy" exactly.
+- Tests must be deterministic and hermetic: fake the network, database, child processes, clock and
+  randomness at the module boundary. Never call a real service or spawn a real binary in a test.
+- Never skip a test, never mark one todo, and never weaken an assertion to make it pass. If the code is
+  wrong, fix the code.
+- Run the test files you wrote before you finish, and leave them passing.`;
+
 function assignmentFor(state: PipelineState, moduleId: string): AgentAssignment {
   const fromDesign = state.agentDesign?.modules?.[moduleId];
   if (fromDesign) return fromDesign;
@@ -112,7 +135,9 @@ Rules:
 - Match Architecture.md and Database.md exactly (stack, conventions, schema).
 - ${assignment.systemPrompt ? assignment.systemPrompt : "Follow the project's established conventions."}
 - Do not modify files owned by other modules except where the touches list says so.
-- When done, verify your files parse/compile if a quick check is possible.`;
+- When done, verify your files parse/compile if a quick check is possible.
+
+${MODULE_TEST_MANDATE}`;
 
   await spawnClaudeAgent({
     prompt,
@@ -156,7 +181,9 @@ Requirements:
 - Create all listed files with complete, production-ready code
 - Match the architecture and database contracts above
 - Include error handling
-- Do not use placeholder or TODO comments — implement fully`;
+- Do not use placeholder or TODO comments — implement fully
+
+${MODULE_TEST_MANDATE}`;
 
   await new Promise<void>((resolve, reject) => {
     const child = spawn("codewhale", ["exec", "--auto", cwPrompt], { cwd: state.workspaceDir, env });
@@ -229,15 +256,93 @@ Otherwise list the specific errors that must be fixed (one per line).`,
 
 // ─── Failure diagnosis ────────────────────────────────────────────────────────
 
-interface TsError { file: string; line: number; col: number; code: string; message: string; }
+export interface TsError {
+  file: string;
+  line: number;
+  col: number;
+  code: string;
+  /** The headline only — what tsc prints on the error line itself. */
+  message: string;
+  /**
+   * The indented explanation tsc prints beneath the headline. This is where the
+   * actual cause lives for structural errors: TS2769 ("No overload matches this
+   * call") says nothing on its own, while the detail names the two conflicting
+   * types and the paths they came from. Dropping it left the diagnostic agent
+   * guessing, so it is captured.
+   */
+  detail: string;
+}
 
-function parseTsErrors(output: string): TsError[] {
-  const re = /^(.+?)\((\d+),(\d+)\):\s+error\s+(TS\d+):\s+(.+)$/gm;
+export function parseTsErrors(output: string): TsError[] {
+  const headline = /^(.+?)\((\d+),(\d+)\):\s+error\s+(TS\d+):\s+(.+)$/;
+  const lines = output.split("\n");
   const errors: TsError[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(output)) !== null)
-    errors.push({ file: m[1]!, line: Number(m[2]), col: Number(m[3]), code: m[4]!, message: m[5]! });
+
+  for (let i = 0; i < lines.length; i++) {
+    const m = headline.exec(lines[i]!);
+    if (!m) continue;
+    // Continuation lines are indented; the next unindented line ends this error.
+    const detail: string[] = [];
+    for (let j = i + 1; j < lines.length; j++) {
+      const next = lines[j]!;
+      if (!/^\s+\S/.test(next)) break;
+      detail.push(next.trimEnd());
+    }
+    errors.push({
+      file: m[1]!,
+      line: Number(m[2]),
+      col: Number(m[3]),
+      code: m[4]!,
+      message: m[5]!,
+      detail: detail.join("\n"),
+    });
+  }
   return errors;
+}
+
+/**
+ * Spot a package that TypeScript is seeing at two different node_modules paths.
+ *
+ * A duplicated dependency produces two structurally identical but nominally
+ * distinct types, and every resulting error reads as an inscrutable mismatch
+ * between two identical-looking types. It is unfixable in application code —
+ * the fix is always in package.json — so the builder is told plainly, rather
+ * than being left to rewrite the file that merely happens to mention both.
+ *
+ * Real case: vitest 2.x pins Vite 5 while the project used Vite 8, so
+ * node_modules/vite and node_modules/vitest/node_modules/vite both supplied
+ * `Plugin`, and module 1 burned every attempt rewriting vitest.config.ts.
+ */
+export function detectDuplicatePackageConflict(output: string): string {
+  // Every path token that walks through node_modules, e.g.
+  //   .../node_modules/vite/dist/node/index
+  //   .../node_modules/vitest/node_modules/vite/dist/node/index
+  // The package is the segment after the LAST node_modules; the whole chain of
+  // node_modules segments identifies WHERE that copy lives.
+  const pathToken = /[^\s"'()]*node_modules\/[^\s"'()]*/g;
+  const segment = /node_modules\/((?:@[^/]+\/)?[^/]+)/g;
+
+  const locationsByPackage = new Map<string, Set<string>>();
+  for (const token of output.match(pathToken) ?? []) {
+    const chain = [...token.matchAll(segment)].map((m) => m[1]!);
+    const pkg = chain[chain.length - 1];
+    if (!pkg) continue;
+    if (!locationsByPackage.has(pkg)) locationsByPackage.set(pkg, new Set());
+    locationsByPackage.get(pkg)!.add(chain.join(" > "));
+  }
+
+  const duplicated = [...locationsByPackage.entries()].filter(([, locations]) => locations.size > 1);
+  if (duplicated.length === 0) return "";
+
+  const names = duplicated.map(([pkg]) => pkg);
+  return (
+    `DUPLICATE DEPENDENCY: TypeScript is resolving ${names.map((n) => `"${n}"`).join(", ")} from more than one ` +
+    `place in node_modules (both a top-level copy and a copy nested inside another package). Two copies of a ` +
+    `package produce two incompatible versions of the same type, which is what these errors actually are — the ` +
+    `source file is fine. Fix this in package.json by choosing versions whose peer requirements agree so only ` +
+    `ONE copy is installed (check the offending package's peer/dependency range against what is pinned), then ` +
+    `reinstall. Do not attempt to work around it with casts or by editing the config file.`
+  );
 }
 
 function parseTestFailures(output: string): string[] {
@@ -285,9 +390,22 @@ async function diagnoseFailure(
     if (slice) snippetParts.push(`### ${err.file} (around line ${err.line})\n\`\`\`\n${slice}\n\`\`\``);
   }
 
+  // A duplicated dependency makes every downstream error unfixable in source,
+  // so it leads — otherwise the agent prescribes edits to a blameless file.
+  const duplicateHint = detectDuplicatePackageConflict(rawOutput);
+
   const structuredErrors = [
+    duplicateHint,
     tsErrors.length > 0
-      ? `TypeScript errors (${tsErrors.length}):\n${tsErrors.slice(0, 20).map((e) => `  ${e.file}(${e.line},${e.col}) ${e.code}: ${e.message}`).join("\n")}`
+      ? `TypeScript errors (${tsErrors.length}):\n${tsErrors
+          .slice(0, 20)
+          .map((e) => {
+            const head = `  ${e.file}(${e.line},${e.col}) ${e.code}: ${e.message}`;
+            // The headline of a structural error is meaningless without the
+            // indented explanation underneath it.
+            return e.detail ? `${head}\n${e.detail.split("\n").slice(0, 12).join("\n")}` : head;
+          })
+          .join("\n")}`
       : "",
     testFailures.length > 0
       ? `Test failures:\n${testFailures.join("\n")}`
@@ -332,22 +450,16 @@ Do NOT give generic advice. Do NOT explain concepts. Fix THESE specific errors. 
  * clauses run — otherwise typecheck/build clauses fail with "cannot find
  * module" no matter how good the generated code is, and retries fly blind.
  * Idempotent: npm short-circuits quickly when node_modules is current.
+ *
+ * Serialization and stale-metadata recovery live in orchestrator/npm.ts.
  */
 async function ensureDependencies(state: PipelineState): Promise<{ ok: boolean; detail: string }> {
   if (!existsSync(join(state.workspaceDir, "package.json"))) return { ok: true, detail: "" };
-  try {
-    await execFileAsync("npm", ["install", "--prefer-offline", "--no-audit", "--no-fund"], {
-      cwd: state.workspaceDir,
-      timeout: 300_000,
-      env: { ...process.env },
-    });
-    return { ok: true, detail: "" };
-  } catch (e: any) {
-    return {
-      ok: false,
-      detail: `npm install failed: ${((e.stderr || "") + (e.stdout || "") || e.message).slice(-1200)}`,
-    };
+  const result = await installDependencies(state.workspaceDir);
+  if (result.refetchedMetadata) {
+    appendLog(state.pipelineId, "[Deps] npm's cached registry metadata was stale — reinstalled with --prefer-online.");
   }
+  return { ok: result.ok, detail: result.detail };
 }
 
 /** Run a module's command exit clauses. Non-command kinds are skipped here. */
@@ -429,8 +541,16 @@ async function runOneModule(pipelineId: string, mod: PlanModule): Promise<boolea
 
     const deps = await ensureDependencies(latest);
     if (!deps.ok) {
-      appendLog(pipelineId, `[Module] "${label}" — dependency install failed (attempt ${attempt}), diagnosing…`);
-      critique = await diagnoseFailure(latest, mod, "npm install", deps.detail);
+      // A resolved "this version does not exist, the latest is X" explanation is
+      // already a precise instruction — pass it through verbatim rather than
+      // diluting it through the diagnostic agent, which cannot check a registry.
+      if (deps.detail.includes("DOES NOT EXIST")) {
+        appendLog(pipelineId, `[Module] "${label}" — package.json pins an unpublished version (attempt ${attempt})`);
+        critique = deps.detail;
+      } else {
+        appendLog(pipelineId, `[Module] "${label}" — dependency install failed (attempt ${attempt}), diagnosing…`);
+        critique = await diagnoseFailure(latest, mod, "npm install", deps.detail);
+      }
       console.log(`[Fleet] ${mod.moduleId} dependency install failed (attempt ${attempt}): ${deps.detail.slice(0, 200)}`);
       continue;
     }
@@ -475,6 +595,37 @@ async function updateModuleStatus(
 }
 
 const FLEET_MAX_RETRIES = 3;
+
+/**
+ * Prepare the board for another full-fleet attempt.
+ *
+ * FAILED and BLOCKED modules go back to PENDING, but a FAILED module KEEPS its
+ * recorded failure: runOneModule seeds its first attempt's critique from that
+ * field, so preserving it is what turns three isolated 3-attempt runs into nine
+ * attempts that build on each other. Discarding it made every fleet retry
+ * rediscover the same errors — observed on a real run where module 1 got one
+ * step further each attempt (unpublished dependency version → build error →
+ * typecheck error) and then lost all of it on reset.
+ *
+ * A BLOCKED module's "failure" is only "Dependency failed: mX" — it says nothing
+ * about that module's own code, so it is cleared rather than fed back as if it
+ * were a code review. PASSED modules are left untouched so work is not redone.
+ */
+export function resetBoardForFleetRetry(
+  modules: Array<{ moduleId: string; status: string; attempts: number; failure?: string }>
+): void {
+  for (const entry of modules) {
+    if (entry.status === "FAILED") {
+      entry.status = "PENDING";
+      entry.attempts = 0;
+      // failure deliberately preserved as the next attempt's starting critique
+    } else if (entry.status === "BLOCKED") {
+      entry.status = "PENDING";
+      entry.attempts = 0;
+      delete entry.failure;
+    }
+  }
+}
 
 /**
  * DAG-parallel dispatch: run every module whose dependencies have PASSED,
@@ -585,15 +736,8 @@ export async function runExecutionBackground(pipelineId: string, _toolsConfirmed
         pipelineId,
         `[Fleet] All ${planModules.length} modules failed on fleet attempt ${fleetAttempt}/${FLEET_MAX_RETRIES} — resetting and retrying entire fleet…`
       );
-      // Reset every FAILED/BLOCKED module back to PENDING so the fleet reruns them.
       if (finalState.board) {
-        for (const entry of finalState.board.modules) {
-          if (entry.status === "FAILED" || entry.status === "BLOCKED") {
-            entry.status = "PENDING";
-            entry.attempts = 0;
-            delete (entry as any).failure;
-          }
-        }
+        resetBoardForFleetRetry(finalState.board.modules);
       }
       finalState.lastTransitionAt = new Date().toISOString();
       await savePipeline(finalState);
