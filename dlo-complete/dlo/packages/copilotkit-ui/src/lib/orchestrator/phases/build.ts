@@ -350,6 +350,53 @@ export function detectDuplicatePackageConflict(output: string): string {
   );
 }
 
+/**
+ * Spot a TanStack Router project whose generated route tree is missing.
+ *
+ * `createFileRoute('/')` is typed through the route tree the router's generator
+ * emits (`routeTree.gen.ts`). Until that file exists the parameter type
+ * collapses to `undefined`, and tsc reports the perfectly correct call as
+ * `Argument of type '"/"' is not assignable to parameter of type 'undefined'`.
+ *
+ * This is the pipeline's DEFAULT stack, and the failure is unfixable in the
+ * route file: the diagnostic agent reads the error literally and prescribes
+ * "remove the path argument", which breaks routing and still does not
+ * typecheck. Observed on a real run — the scaffold module burned all nine
+ * attempts (3 per fleet retry) chasing that prescription, every other module
+ * was BLOCKED behind it, and the pipeline finished FAILED with nothing built.
+ *
+ * Deterministic, and checked against the filesystem rather than the message
+ * alone, so it cannot fire on a project that has already generated its tree.
+ */
+export function detectMissingRouteTree(
+  output: string,
+  workspace: { hasRoutesDirectory: boolean; hasGeneratedRouteTree: boolean }
+): string {
+  if (!workspace.hasRoutesDirectory || workspace.hasGeneratedRouteTree) return "";
+
+  const undefinedParamOnRoute = output
+    .split("\n")
+    .some(
+      (line) =>
+        /routes[\\/]/.test(line) &&
+        /not assignable to parameter of type '?undefined'?/.test(line)
+    );
+  const missingRouteTreeImport = /Cannot find module ['"][^'"]*routeTree\.gen['"]/.test(output);
+
+  if (!undefinedParamOnRoute && !missingRouteTreeImport) return "";
+
+  return (
+    `MISSING GENERATED ROUTE TREE: this project has a routes directory but no routeTree.gen.ts. ` +
+    `TanStack Router types createFileRoute() through that generated file, so until it exists every ` +
+    `createFileRoute('/path') call reports its path argument as "not assignable to parameter of type ` +
+    `'undefined'", and an import of ./routeTree.gen cannot resolve. The route files are CORRECT — do NOT ` +
+    `remove the path argument from createFileRoute() and do NOT hand-write routeTree.gen.ts. Generate it: ` +
+    `register the router plugin (@tanstack/router-plugin, or the TanStack Start config that includes it) so ` +
+    `the tree is emitted on dev/build, and add a package.json script that generates it, then run that script ` +
+    `before typechecking.`
+  );
+}
+
 function parseTestFailures(output: string): string[] {
   const lines = output.split("\n");
   const failures: string[] = [];
@@ -399,7 +446,20 @@ async function diagnoseFailure(
   // so it leads — otherwise the agent prescribes edits to a blameless file.
   const duplicateHint = detectDuplicatePackageConflict(rawOutput);
 
+  // Same reasoning for a missing generated route tree, and it leads the lead:
+  // its errors point straight at route files that are not wrong.
+  const routeTreeHint = detectMissingRouteTree(rawOutput, {
+    hasRoutesDirectory:
+      existsSync(join(state.workspaceDir, "src", "routes")) ||
+      existsSync(join(state.workspaceDir, "app", "routes")),
+    hasGeneratedRouteTree:
+      existsSync(join(state.workspaceDir, "src", "routeTree.gen.ts")) ||
+      existsSync(join(state.workspaceDir, "app", "routeTree.gen.ts")) ||
+      existsSync(join(state.workspaceDir, "routeTree.gen.ts")),
+  });
+
   const structuredErrors = [
+    routeTreeHint,
     duplicateHint,
     tsErrors.length > 0
       ? `TypeScript errors (${tsErrors.length}):\n${tsErrors

@@ -190,6 +190,13 @@ PLAN RULES:
   (dev/build/test), the framework config files, and the entry point, so the app is installable and
   buildable from module 1. For TanStack Start that means package.json, app.config.ts, tsconfig.json,
   and the src/routes entry files.
+- CODE GENERATION IS PART OF THE SCAFFOLD. If the chosen stack types anything through a GENERATED file,
+  the scaffold module must produce it and must not leave it to a later module: register the generator
+  (for TanStack Router/Start, the router plugin that emits src/routeTree.gen.ts), add a package.json
+  script that runs it, list the generated file in "touches", and run that script BEFORE any typecheck
+  exit clause. A scaffold whose typecheck clause runs before its codegen can never pass: createFileRoute
+  reports its own path argument as "not assignable to parameter of type 'undefined'" until the route
+  tree exists, and every module that depends on the scaffold is blocked behind it.
 - The SECOND module (dependsOn the scaffold, and a dependency of every module that ships tests) MUST
   install and configure the test harness described in Architecture.md "## Testing Strategy": the test
   dependencies, the runner config file, the setup file, and the package.json \`test\` script. That

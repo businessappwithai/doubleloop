@@ -227,7 +227,7 @@ describe('Complete Project Scaffold Verification', () => {
       const content = fs.readFileSync(path.join(projectRoot, 'src/routes/index.tsx'), 'utf-8')
 
       expect(content).toContain('createFileRoute')
-      expect(content).toContain('createFileRoute()')
+      expect(content).toContain("createFileRoute('/')")
       expect(content).toContain('Welcome to NoteFlow')
       expect(content).toContain('Notion-like collaborative workspace')
     })

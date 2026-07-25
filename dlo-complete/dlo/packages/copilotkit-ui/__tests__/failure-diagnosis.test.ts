@@ -11,7 +11,11 @@
  */
 
 import { describe, test, expect } from "vitest";
-import { parseTsErrors, detectDuplicatePackageConflict } from "../src/lib/orchestrator/phases/build";
+import {
+  parseTsErrors,
+  detectDuplicatePackageConflict,
+  detectMissingRouteTree,
+} from "../src/lib/orchestrator/phases/build";
 
 const DUPLICATE_VITE_OUTPUT = `vitest.config.ts(10,13): error TS2769: No overload matches this call.
   The last overload gave the following error.
@@ -131,5 +135,75 @@ describe("detectDuplicatePackageConflict", () => {
     const hint = detectDuplicatePackageConflict(output);
     expect(hint).toContain('"vite"');
     expect(hint).toContain('"graphql"');
+  });
+});
+
+/**
+ * From the NoteFlow run: the scaffold module wrote a perfectly correct
+ * `createFileRoute('/')`, but no routeTree.gen.ts existed yet, so tsc called the
+ * path argument "not assignable to parameter of type 'undefined'". The
+ * diagnostic agent prescribed removing the argument. Nine attempts across three
+ * fleet retries chased that, all 21 other modules were BLOCKED behind it, and
+ * the pipeline finished FAILED with nothing built. Generating the route tree
+ * makes the same source typecheck.
+ */
+describe("detectMissingRouteTree", () => {
+  const MISSING_TREE_OUTPUT =
+    `src/routes/index.tsx(3,38): error TS2345: Argument of type '"/"' is not assignable to parameter of type 'undefined'.`;
+  const missingTree = { hasRoutesDirectory: true, hasGeneratedRouteTree: false };
+
+  test("names the generated file as the cause", () => {
+    const hint = detectMissingRouteTree(MISSING_TREE_OUTPUT, missingTree);
+    expect(hint).toContain("MISSING GENERATED ROUTE TREE");
+    expect(hint).toContain("routeTree.gen.ts");
+  });
+
+  test("forbids the wrong fix the agent kept prescribing", () => {
+    const hint = detectMissingRouteTree(MISSING_TREE_OUTPUT, missingTree);
+    expect(hint).toMatch(/do NOT remove the path argument/i);
+    expect(hint).toMatch(/do NOT hand-write routeTree\.gen\.ts/i);
+  });
+
+  test("tells the builder to generate the tree before typechecking", () => {
+    const hint = detectMissingRouteTree(MISSING_TREE_OUTPUT, missingTree);
+    expect(hint).toMatch(/router-plugin|generator/i);
+    expect(hint).toMatch(/before typechecking/i);
+  });
+
+  test("also fires on an unresolvable routeTree.gen import", () => {
+    const output = `src/router.tsx(2,30): error TS2307: Cannot find module './routeTree.gen' or its corresponding type declarations.`;
+    expect(detectMissingRouteTree(output, missingTree)).toContain("MISSING GENERATED ROUTE TREE");
+  });
+
+  test("stays silent once the tree has been generated", () => {
+    expect(
+      detectMissingRouteTree(MISSING_TREE_OUTPUT, { hasRoutesDirectory: true, hasGeneratedRouteTree: true })
+    ).toBe("");
+  });
+
+  test("stays silent for a project with no routes directory at all", () => {
+    expect(
+      detectMissingRouteTree(MISSING_TREE_OUTPUT, { hasRoutesDirectory: false, hasGeneratedRouteTree: false })
+    ).toBe("");
+  });
+
+  test("stays silent on an undefined-parameter error outside the routes directory", () => {
+    // The same message from ordinary application code is a real type error.
+    const output = `src/lib/format.ts(9,12): error TS2345: Argument of type '"/"' is not assignable to parameter of type 'undefined'.`;
+    expect(detectMissingRouteTree(output, missingTree)).toBe("");
+  });
+
+  test("stays silent on unrelated route-file errors", () => {
+    const output = `src/routes/index.tsx(5,3): error TS2304: Cannot find name 'useSate'.`;
+    expect(detectMissingRouteTree(output, missingTree)).toBe("");
+  });
+
+  test("handles Windows-style route paths", () => {
+    const output = `src\\routes\\index.tsx(3,38): error TS2345: Argument of type '"/"' is not assignable to parameter of type 'undefined'.`;
+    expect(detectMissingRouteTree(output, missingTree)).toContain("MISSING GENERATED ROUTE TREE");
+  });
+
+  test("returns nothing for empty output", () => {
+    expect(detectMissingRouteTree("", missingTree)).toBe("");
   });
 });

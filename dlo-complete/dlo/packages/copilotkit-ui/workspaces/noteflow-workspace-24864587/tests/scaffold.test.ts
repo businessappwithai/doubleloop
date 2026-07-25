@@ -242,10 +242,10 @@ describe('Project Scaffold', () => {
       expect(content).toContain('viewport')
     })
 
-    it('index.tsx should define file route', () => {
+    it('index.tsx should define file route with inferred root path', () => {
       const content = fs.readFileSync(path.join(projectRoot, 'src/routes/index.tsx'), 'utf-8')
       expect(content).toContain('createFileRoute')
-      expect(content).toContain("createFileRoute('/')")
+      expect(content).toContain("createFileRoute('/')({")
       expect(content).toContain('export const Route')
     })
 
