@@ -16,7 +16,10 @@ export default defineConfig({
     },
   },
   test: {
-    environment: "jsdom",
+    // See vitest.environment.ts for why this wraps "jsdom" instead of naming it
+    // directly: the plain "jsdom" environment leaves Uint8Array/ArrayBuffer shadowed
+    // by jsdom's own realm, which breaks esbuild's startup invariant check.
+    environment: "./vitest.environment.ts",
     globals: true,
     globalSetup: ["./vitest.global-setup.ts"],
     setupFiles: ["./vitest.setup.ts"],

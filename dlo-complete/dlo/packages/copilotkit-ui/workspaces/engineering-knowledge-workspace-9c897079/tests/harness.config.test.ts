@@ -18,7 +18,10 @@ describe("vitest.config.ts", () => {
   });
 
   test("runs under jsdom with globals and the setup file wired in", () => {
-    expect(vitestConfig.test?.environment).toBe("jsdom");
+    // Either the built-in "jsdom" environment, or the local wrapper around it
+    // (vitest.environment.ts) that re-pins Uint8Array/ArrayBuffer to the outer
+    // realm so esbuild's startup invariant survives test collection.
+    expect(vitestConfig.test?.environment).toMatch(/^(?:jsdom|\.\/vitest\.environment\.ts)$/);
     expect(vitestConfig.test?.globals).toBe(true);
     expect(vitestConfig.test?.setupFiles).toContain("./vitest.setup.ts");
   });
