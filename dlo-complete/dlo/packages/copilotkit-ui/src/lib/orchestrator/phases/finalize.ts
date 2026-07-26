@@ -744,14 +744,51 @@ export async function runDbProvisioningBackground(
     void runTestingBackground(pipelineId, false);
   } catch (err: any) {
     const s = await getPipeline(pipelineId);
-    if (s) {
-      s.phase = "FAILED";
-      pushPhaseHistory(s, "FAILED");
-      s.error = `DB provisioning failed: ${err.message}`;
+    if (!s) return;
+
+    // No Docker on this host is a missing capability, not a broken pipeline.
+    // The generated application's unit tests are required to be hermetic, so
+    // they still run and still mean something without a database — killing the
+    // whole run here threw away every module the fleet had already built.
+    // Recorded loudly (never silently "fine"), then the pipeline continues.
+    if (isDockerUnavailable(err.message ?? "")) {
+      const note = `Database not provisioned: Docker is unavailable on this host (${String(err.message).slice(0, 200)}). The application was NOT run against a real database; only hermetic tests are meaningful for this run.`;
+      appendLog(pipelineId, `[DB] ${note}`);
+      console.warn(`[DB] ${note}`);
+      s.error = note;
+      s.phase = "TESTING_RUNNING";
+      pushPhaseHistory(s, "TESTING_RUNNING");
+      s.activeGate = null;
       s.lastTransitionAt = new Date().toISOString();
       await savePipeline(s);
+      void runTestingBackground(pipelineId, false);
+      return;
     }
+
+    s.phase = "FAILED";
+    pushPhaseHistory(s, "FAILED");
+    s.error = `DB provisioning failed: ${err.message}`;
+    s.lastTransitionAt = new Date().toISOString();
+    await savePipeline(s);
   }
+}
+
+/**
+ * Is this failure "there is no Docker here" rather than "the database broke"?
+ *
+ * Only the daemon/binary being absent qualifies. A daemon that IS present and
+ * rejects the run (bad image, port already bound, out of disk) is a real
+ * failure and must still fail the pipeline.
+ */
+export function isDockerUnavailable(message: string): boolean {
+  return (
+    /docker\.sock/i.test(message)
+    || /cannot connect to the docker daemon/i.test(message)
+    || /is the docker daemon running/i.test(message)
+    || /\b(?:spawn |command not found[: ]*)docker\b/i.test(message)
+    || /\bdocker: not found\b/i.test(message)
+    || /ENOENT.*\bdocker\b/i.test(message)
+  );
 }
 
 // ─── Testing phase (with fix loop) ───────────────────────────────────────────
