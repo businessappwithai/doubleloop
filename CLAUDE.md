@@ -117,6 +117,11 @@ phases/finalize.ts    ← Phases IV/V: build → db → test → deploy → laun
 subagents/claude.ts   ← THE ONLY place `claude` is spawned (plan mode, subscription vs api-key auth)
 subagents/gemini.ts   ← Gemini client
 subagents/pi.ts       ← pi.dev runner seam: real pi SDK when installed, else LocalSubagentRunner
+npm.ts                ← workspace dependency installs: per-directory lock (the
+                        fleet builds in ONE directory in parallel), retry with
+                        --prefer-online when npm's cached metadata is stale, and
+                        registry lookups that name unpublished versions and
+                        resolve compatible version pairings for the builder
 langflow.ts           ← export/apply the agent graph as a Langflow flow
 skillManager.ts       ← discovers/installs Claude skills under ~/.claude/skills
 logStore.ts           ← in-process per-pipeline log ring buffer (feeds /logs + SSE)
@@ -421,11 +426,15 @@ Real, verified, and worth knowing before you trust a command or a doc:
 2. **`pnpm test` is uneven.** `journal`, `kernel`, `scheduler`, `plan-schema`,
    `exit-clauses`, `adapters-pi` have tests. `erd` declares
    `"test": "vitest run"` but has **no test files** (that package's test task
-   fails on "no test files found"). `core`, `language`, `db-service`,
-   **and `copilotkit-ui` — where all the pipeline logic lives — have no test
-   script and no tests at all.** The orchestrator is the least-tested and
-   highest-risk code in the repo; adding tests there is the highest-value
-   contribution available.
+   fails on "no test files found"). `core`, `language` and `db-service` still
+   have no test script and no tests.
+   `copilotkit-ui` **now has vitest and 211 tests** under
+   `packages/copilotkit-ui/__tests__/` (`vitest.config.ts`, node environment,
+   `include: __tests__/**/*.test.ts` so generated app workspaces are never
+   picked up). They cover plan parsing/validation, the testing phase, npm
+   dependency handling, failure diagnosis, the fleet retry board and the
+   `claude` spawn seam — but the orchestrator is large and coverage is far from
+   complete, so it remains the highest-value place to add more.
 3. Several packages use `"test": "vitest"` (watch mode) rather than
    `vitest run`. Invoke `vitest run` explicitly.
 4. **`dlo/README.md` is aspirational.** It documents `@dlo/hitl`, `@dlo/cli`,
@@ -445,11 +454,21 @@ Real, verified, and worth knowing before you trust a command or a doc:
 7. `db-service` is **MariaDB/MySQL** (`mariadb` driver, `?` placeholders,
    `LONGTEXT`, `ENGINE=InnoDB`) even though generated applications are always
    PostgreSQL. Do not "fix" its SQL to Postgres dialect.
-8. `phases/build.ts` module prompts currently demand "no TODOs, no
-   placeholders" but **do not explicitly require unit tests per module** — tests
-   in generated apps come from whatever Implementation.md happens to plan. If
-   you are asked to make generated code reliably tested, that prompt (and the
-   design-phase acceptance-criteria prompt) is where the change belongs.
+8. **Generated apps are now required to ship tests, in three places at once**
+   (change this set together or the guarantee leaks):
+   - `phases/design.ts` — `TEST_RULE` plus a mandatory `## Testing Strategy`
+     section in Architecture.md, and plan rules requiring a test-harness module
+     and per-module test files / test-running exit clauses.
+     `validatePlanTestCoverage()` audits the plan and logs each gap
+     (non-blocking by design — see below).
+   - `phases/build.ts` — `MODULE_TEST_MANDATE` is appended to every build
+     subagent prompt, because a build subagent sees only that one message.
+   - `phases/finalize.ts` — the real enforcement: `detectTestCommand` never
+     passes `--passWithNoTests`, `assessTestOutcome` counts the tests that
+     actually executed, and `runTestingBackground` treats an empty suite as a
+     failure it repairs via `runTestAuthorSubagent` (max
+     `MAX_TEST_AUTHOR_ROUNDS`) rather than skipping to deploy. The supervisor
+     may not override a run in which zero tests executed.
 9. `pnpm install` has not been run in a fresh clone — `node_modules/` is
    absent. Install before typechecking or testing anything.
 
