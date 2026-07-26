@@ -1,6 +1,6 @@
 # Handoff — Engineering Knowledge Workspace
 
-> Completed: 2026-07-26T03:53:35.314Z
+> Completed: 2026-07-26T16:23:19.393Z
 
 ## App URL
 
@@ -14,20 +14,20 @@ http://localhost:3001 (starting up)
 
 - **m1** — PASSED  
   Attempts: 1
-- **m2** — FAILED  
+- **m2** — PASSED  
   Attempts: 3
-- **m3** — BLOCKED  
-  Attempts: 0
-- **m4** — BLOCKED  
-  Attempts: 0
+- **m3** — PASSED  
+  Attempts: 1
+- **m4** — FAILED  
+  Attempts: 3
 - **m5** — BLOCKED  
   Attempts: 0
 - **m6** — BLOCKED  
   Attempts: 0
-- **m7** — BLOCKED  
-  Attempts: 0
-- **m8** — BLOCKED  
-  Attempts: 0
+- **m7** — FAILED  
+  Attempts: 3
+- **m8** — FAILED  
+  Attempts: 3
 - **m9** — BLOCKED  
   Attempts: 0
 - **m10** — BLOCKED  
@@ -42,8 +42,8 @@ http://localhost:3001 (starting up)
   Attempts: 0
 - **m15** — BLOCKED  
   Attempts: 0
-- **m16** — BLOCKED  
-  Attempts: 0
+- **m16** — FAILED  
+  Attempts: 3
 - **m17** — BLOCKED  
   Attempts: 0
 - **m18** — BLOCKED  
