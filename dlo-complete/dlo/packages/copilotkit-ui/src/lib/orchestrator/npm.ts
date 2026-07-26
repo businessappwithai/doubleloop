@@ -90,6 +90,92 @@ export function parseMissingPackageSpecs(output: string): Array<{ name: string; 
 /** Registry lookup seam — replaced in tests so no unit test hits the network. */
 export type VersionLookup = (name: string) => Promise<{ latest: string; versions: string[] } | null>;
 
+/**
+ * Does a dependency range admit this major version?
+ *
+ * Deliberately major-only, covering the forms npm packages actually publish
+ * ("^6.0.0 || ^7.0.0 || ^8.0.0", ">=5", "5.x", "*"). Full semver range
+ * resolution is not needed to answer "which vitest works with Vite 8", and
+ * pulling in a semver dependency for it would be disproportionate.
+ */
+export function rangeAdmitsMajor(range: string, major: number): boolean {
+  if (!range) return false;
+  if (range.trim() === "*") return true;
+  for (const clause of range.split("||")) {
+    const text = clause.trim();
+    const caretOrTilde = text.match(/^[\^~]?(\d+)\./);
+    if (caretOrTilde && Number(caretOrTilde[1]) === major) return true;
+    const gte = text.match(/^>=\s*(\d+)/);
+    if (gte && major >= Number(gte[1])) return true;
+    const xRange = text.match(/^(\d+)\.x/);
+    if (xRange && Number(xRange[1]) === major) return true;
+    const exact = text.match(/^(\d+)\.\d+\.\d+/);
+    if (exact && Number(exact[1]) === major) return true;
+  }
+  return false;
+}
+
+/** Packument lookup that also exposes each version's declared ranges. */
+export type RangeLookup = (
+  name: string
+) => Promise<{ latest: string; versions: Array<{ version: string; ranges: Record<string, string> }> } | null>;
+
+const registryRangeLookup: RangeLookup = async (name) => {
+  try {
+    const res = await fetch(`https://registry.npmjs.org/${name.replace("/", "%2F")}`, {
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return null;
+    const body: any = await res.json();
+    const latest = body?.["dist-tags"]?.latest;
+    if (!latest) return null;
+    const versions = Object.entries(body.versions ?? {}).map(([version, meta]: [string, any]) => ({
+      version,
+      ranges: { ...(meta.peerDependencies ?? {}), ...(meta.dependencies ?? {}) },
+    }));
+    return { latest, versions };
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Answer "which version of `nesting` works with `target`@major?"
+ *
+ * A duplicated package is always a version disagreement: the project pins
+ * target@8 while the package that nested its own copy only accepts target@5-7.
+ * Telling the builder to "pick compatible versions" is useless without this
+ * fact, and it cannot query a registry itself — so it guesses, which is exactly
+ * what a real run did (vitest 2 → vitest 3, neither of which accepts Vite 8).
+ */
+export async function suggestCompatiblePairing(
+  nesting: string,
+  target: string,
+  targetMajor: number,
+  lookup: RangeLookup = registryRangeLookup
+): Promise<string> {
+  const info = await lookup(nesting);
+  if (!info) return "";
+
+  const stable = info.versions.filter((v) => !/-/.test(v.version));
+  const compatible = stable.filter((v) => rangeAdmitsMajor(v.ranges[target] ?? "", targetMajor));
+  if (compatible.length === 0) {
+    const newestRange = stable[stable.length - 1]?.ranges[target];
+    return (
+      `No published version of "${nesting}" accepts ${target} ${targetMajor}.x` +
+      (newestRange ? ` (its newest release requires ${target} ${newestRange})` : "") +
+      `. Downgrade ${target} to a major that "${nesting}" supports instead.`
+    );
+  }
+  const best = compatible[compatible.length - 1]!;
+  return (
+    `"${nesting}" only works with ${target} ${targetMajor}.x from version ${best.version} onward ` +
+    `(${best.version} declares ${target} ${best.ranges[target]}). Pin "${nesting}": "^${best.version}" — ` +
+    `or lower ${target} to a major the currently pinned "${nesting}" already supports. Pick ONE pairing, ` +
+    `do not raise both blindly.`
+  );
+}
+
 const registryLookup: VersionLookup = async (name) => {
   try {
     const res = await fetch(`https://registry.npmjs.org/${name.replace("/", "%2F")}`, {

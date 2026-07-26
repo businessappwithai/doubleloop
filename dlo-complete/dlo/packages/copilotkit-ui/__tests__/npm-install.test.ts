@@ -17,7 +17,7 @@ vi.mock("node:child_process", () => ({
   spawn: vi.fn(),
 }));
 
-const { installDependencies, isStaleRegistryMetadataError, parseMissingPackageSpecs, explainMissingVersions } =
+const { installDependencies, isStaleRegistryMetadataError, parseMissingPackageSpecs, explainMissingVersions, rangeAdmitsMajor, suggestCompatiblePairing } =
   await import("../src/lib/orchestrator/npm");
 
 /** npm failure carrying output on stderr, the way execFile surfaces it. */
@@ -293,5 +293,73 @@ describe("explainMissingVersions", () => {
     const hint = await explainMissingVersions("No matching version found for pkg@2.0.0.", withPrereleases);
     expect(hint).toContain("0.9.0, 1.0.0");
     expect(hint).not.toContain("canary");
+  });
+});
+
+describe("rangeAdmitsMajor", () => {
+  test.each([
+    ["^8.0.0", 8, true],
+    ["^6.0.0 || ^7.0.0 || ^8.0.0", 8, true],
+    ["^6.0.0 || ^7.0.0 || ^8.0.0", 6, true],
+    ["^5.0.0 || ^6.0.0 || ^7.0.0-0", 8, false],
+    ["~4.2.0", 4, true],
+    [">=5", 9, true],
+    [">=5", 4, false],
+    ["5.x", 5, true],
+    ["5.x", 6, false],
+    ["3.1.4", 3, true],
+    ["*", 99, true],
+    ["", 1, false],
+  ])("%s admits major %i -> %s", (range, major, expected) => {
+    expect(rangeAdmitsMajor(range, major)).toBe(expected);
+  });
+});
+
+describe("suggestCompatiblePairing", () => {
+  // Mirrors the real registry shape that blocked a run: vitest 3 tops out at
+  // Vite 7, vitest 4 accepts Vite 8.
+  const vitest = async () => ({
+    latest: "4.1.10",
+    versions: [
+      { version: "2.1.9", ranges: { vite: "^5.0.0" } },
+      { version: "3.2.7", ranges: { vite: "^5.0.0 || ^6.0.0 || ^7.0.0-0" } },
+      { version: "4.1.8", ranges: { vite: "^6.0.0 || ^7.0.0 || ^8.0.0" } },
+      { version: "4.1.10", ranges: { vite: "^6.0.0 || ^7.0.0 || ^8.0.0" } },
+    ],
+  });
+
+  test("names the first version of the nesting package that accepts the target major", async () => {
+    const advice = await suggestCompatiblePairing("vitest", "vite", 8, vitest);
+    expect(advice).toContain("4.1.10");
+    expect(advice).toContain('Pin "vitest"');
+  });
+
+  test("offers lowering the target as the alternative", async () => {
+    const advice = await suggestCompatiblePairing("vitest", "vite", 8, vitest);
+    expect(advice).toMatch(/lower vite to a major/);
+    expect(advice).toMatch(/Pick ONE pairing/);
+  });
+
+  test("reports when no published version supports the target major", async () => {
+    const advice = await suggestCompatiblePairing("vitest", "vite", 99, vitest);
+    expect(advice).toMatch(/No published version of "vitest" accepts vite 99\.x/);
+    expect(advice).toMatch(/Downgrade vite/);
+  });
+
+  test("ignores prerelease versions when recommending", async () => {
+    const withCanary = async () => ({
+      latest: "4.0.0",
+      versions: [
+        { version: "4.0.0", ranges: { vite: "^8.0.0" } },
+        { version: "5.0.0-canary.1", ranges: { vite: "^8.0.0" } },
+      ],
+    });
+    const advice = await suggestCompatiblePairing("vitest", "vite", 8, withCanary);
+    expect(advice).toContain("4.0.0");
+    expect(advice).not.toContain("canary");
+  });
+
+  test("returns nothing when the registry cannot be reached", async () => {
+    expect(await suggestCompatiblePairing("vitest", "vite", 8, async () => null)).toBe("");
   });
 });

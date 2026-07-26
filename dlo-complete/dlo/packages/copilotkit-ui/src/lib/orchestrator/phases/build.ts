@@ -28,7 +28,7 @@ import {
 } from "../state";
 import { spawnClaudeAgent, claudeAuthFromConfig, claudePermissionModeFromConfig } from "../subagents/claude";
 import { runDbProvisioningBackground, runBuildBackground, scaffoldMissingInfrastructure } from "./finalize";
-import { installDependencies } from "../npm";
+import { installDependencies, suggestCompatiblePairing } from "../npm";
 import { appendLog } from "../logStore";
 
 const execFileAsync = promisify(execFile);
@@ -256,6 +256,19 @@ Otherwise list the specific errors that must be fixed (one per line).`,
 
 // ─── Failure diagnosis ────────────────────────────────────────────────────────
 
+/** The major version of a package as actually installed in the workspace. */
+export async function installedMajor(workspaceDir: string, pkg: string): Promise<number | null> {
+  try {
+    const manifest = JSON.parse(
+      await readFile(join(workspaceDir, "node_modules", pkg, "package.json"), "utf-8")
+    );
+    const major = Number(String(manifest.version).split(".")[0]);
+    return Number.isFinite(major) ? major : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface TsError {
   file: string;
   line: number;
@@ -313,6 +326,37 @@ export function parseTsErrors(output: string): TsError[] {
  * node_modules/vite and node_modules/vitest/node_modules/vite both supplied
  * `Plugin`, and module 1 burned every attempt rewriting vitest.config.ts.
  */
+/**
+ * The duplicated packages found in an error, as (nesting package, duplicated
+ * package) pairs — e.g. vite duplicated because vitest brought its own copy.
+ */
+export function findDuplicatePackagePairs(output: string): Array<{ nesting: string; duplicated: string }> {
+  const pathToken = /[^\s"'()]*node_modules\/[^\s"'()]*/g;
+  const segment = /node_modules\/((?:@[^/]+\/)?[^/]+)/g;
+
+  const chainsByPackage = new Map<string, Set<string>>();
+  for (const token of output.match(pathToken) ?? []) {
+    const chain = [...token.matchAll(segment)].map((m) => m[1]!);
+    const pkg = chain[chain.length - 1];
+    if (!pkg) continue;
+    if (!chainsByPackage.has(pkg)) chainsByPackage.set(pkg, new Set());
+    chainsByPackage.get(pkg)!.add(chain.join(">"));
+  }
+
+  const pairs: Array<{ nesting: string; duplicated: string }> = [];
+  for (const [pkg, chains] of chainsByPackage) {
+    if (chains.size < 2) continue;
+    for (const chain of chains) {
+      const parts = chain.split(">");
+      // A nested copy has a parent package before it in the chain.
+      if (parts.length >= 2 && parts[parts.length - 1] === pkg) {
+        pairs.push({ nesting: parts[parts.length - 2]!, duplicated: pkg });
+      }
+    }
+  }
+  return pairs;
+}
+
 export function detectDuplicatePackageConflict(output: string): string {
   // Every path token that walks through node_modules, e.g.
   //   .../node_modules/vite/dist/node/index
@@ -392,7 +436,20 @@ async function diagnoseFailure(
 
   // A duplicated dependency makes every downstream error unfixable in source,
   // so it leads — otherwise the agent prescribes edits to a blameless file.
-  const duplicateHint = detectDuplicatePackageConflict(rawOutput);
+  let duplicateHint = detectDuplicatePackageConflict(rawOutput);
+  if (duplicateHint) {
+    // Naming the conflict is not enough — the builder cannot query a registry,
+    // so it guesses version pairings. Resolve the compatible one for it.
+    const pairs = findDuplicatePackagePairs(rawOutput);
+    const advice: string[] = [];
+    for (const { nesting, duplicated } of pairs.slice(0, 3)) {
+      const major = await installedMajor(state.workspaceDir, duplicated);
+      if (major === null) continue;
+      const suggestion = await suggestCompatiblePairing(nesting, duplicated, major);
+      if (suggestion) advice.push(`- ${suggestion}`);
+    }
+    if (advice.length) duplicateHint += `\n${advice.join("\n")}`;
+  }
 
   const structuredErrors = [
     duplicateHint,
