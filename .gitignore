@@ -45,3 +45,6 @@ dlo-complete/dlo/packages/copilotkit-ui/public/erd/
 
 # TypeScript incremental build state
 *.tsbuildinfo
+
+# Turborepo cache
+.turbo/

@@ -1,0 +1,39 @@
+{
+  "name": "noteflow-workspace",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tanstack-start dev",
+    "build": "tanstack-start build",
+    "preview": "tanstack-start preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --loader tsx src/server/db/migrate.ts"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "drizzle-orm": "^0.36.4",
+    "postgres": "^3.4.4",
+    "argon2": "^0.31.2",
+    "zod": "^3.23.8",
+    "cookie": "^0.6.0",
+    "crypto-js": "^4.2.0"
+  },
+  "devDependencies": {
+    "@tanstack/start": "^1.39.0",
+    "@tanstack/react-router": "^1.52.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.5.3",
+    "vite": "^7.1.0",
+    "vite-tsconfig-paths": "^4.3.2",
+    "drizzle-kit": "^0.31.10",
+    "vitest": "^2.0.5",
+    "jsdom": "^24.1.0",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/jest-dom": "^6.4.2",
+    "@testing-library/user-event": "^14.5.2",
+    "tsx": "^4.19.0"
+  }
+}
