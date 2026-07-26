@@ -1,0 +1,51 @@
+# src/graphql/schema.root.graphql — the root SDL document (Architecture.md "GraphQL conventions
+# (Relay, mandated)"; Implementation.md m7). scripts/emit-schema.ts concatenates this file with
+# every src/modules/**/*.graphql fragment into schema.graphql. `Query` and `Mutation` are opened
+# here with one field each so every module fragment can add its own fields via `extend type Query`
+# / `extend type Mutation` instead of re-declaring the type (GraphQL SDL forbids two non-extension
+# definitions of the same type name in one document — that collision is exactly what
+# emit-schema.ts's duplicate-type-definition check exists to catch). `Mutation._empty` is a
+# placeholder so the type has at least one field before any module extends it; it is never
+# resolved to and carries no meaning once real mutations exist.
+
+"""Relay Global Object Identification. `id` is the opaque base64 encoding of `"TypeName:localId"`."""
+interface Node {
+  id: ID!
+}
+
+"""Relay Connections cursor-pagination metadata (Relay Cursor Connections spec)."""
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+"""OKF Concept provenance/trust classification (mirrors the domain `TrustLevel` union)."""
+enum TrustLevel {
+  UNVERIFIED
+  MACHINE_CONFIRMED
+  HUMAN_REVIEWED
+}
+
+"""OKF Concept publication state (mirrors the domain `Lifecycle` union)."""
+enum Lifecycle {
+  DRAFT
+  ACTIVE
+  DEPRECATED
+  ARCHIVED
+}
+
+"""An ISO-8601 instant, serialized as a string (e.g. `2026-07-26T00:00:00.000Z`)."""
+scalar DateTime
+
+"""An arbitrary JSON value — used for OKF frontmatter's `extra` bag and block payload fields."""
+scalar JSON
+
+type Query {
+  node(id: ID!): Node
+}
+
+type Mutation {
+  _empty: Boolean
+}

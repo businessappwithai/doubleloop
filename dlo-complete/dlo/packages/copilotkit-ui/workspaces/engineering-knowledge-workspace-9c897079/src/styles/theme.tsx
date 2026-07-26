@@ -1,4 +1,4 @@
-// src/styles/theme.ts — theme preference resolution and the provider that drives it.
+// src/styles/theme.tsx — theme preference resolution and the provider that drives it.
 // `resolveTheme`/`applyTheme` are plain, DOM-agnostic-except-for-the-root-element functions so
 // they're trivially unit testable. `ThemeProvider` is the "theme provider" src/routes/__root.tsx
 // mounts: it owns the user's `light | dark | system` preference, tracks the OS preference via

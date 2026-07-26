@@ -1,12 +1,14 @@
 // src/routes/__root.tsx — the document shell every route renders inside. Loads the Astryx
 // theme cascade and the workspace's own global reset before any route content paints, so
-// there is no flash of unstyled content on the SSR'd first response.
-// m16 (Astryx UI shell) mounts the ThemeProvider and AppFrame here; until then this stays a
-// plain document shell.
+// there is no flash of unstyled content on the SSR'd first response. Mounts the theme provider
+// (src/styles/theme.ts) and the three-pane AppFrame (src/components/shell) so every route
+// renders inside the sidebar/main/inspector layout with dark mode wired up.
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import astryxThemeCss from "@astryxdesign/theme-neutral/theme.css?url";
 import globalCss from "../styles/global.css?url";
+import { ThemeProvider } from "../styles/theme";
+import { AppFrame, SidebarChrome, ThemeToggle, ToolbarShell } from "../components/shell";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -31,7 +33,12 @@ export const Route = createRootRoute({
 function RootComponent() {
   return (
     <RootDocument>
-      <Outlet />
+      <ThemeProvider>
+        <AppFrame sidebar={<SidebarChrome title="Engineering Knowledge Workspace" />}>
+          <ToolbarShell actions={<ThemeToggle />} />
+          <Outlet />
+        </AppFrame>
+      </ThemeProvider>
     </RootDocument>
   );
 }
