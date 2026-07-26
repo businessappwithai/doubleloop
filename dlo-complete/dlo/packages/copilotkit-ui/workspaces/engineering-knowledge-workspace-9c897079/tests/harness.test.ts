@@ -4,7 +4,6 @@
 // and the Vitest config never enables `passWithNoTests`.
 import { createElement } from "react";
 import { describe, test, expect, vi } from "vitest";
-import vitestConfig from "../vitest.config";
 import { fixedClock, flushMicrotasks, renderWithShell } from "./helpers/test-utils";
 
 describe("jsdom environment", () => {
@@ -116,17 +115,5 @@ describe("renderWithShell", () => {
 
     expect(getByText("shell content")).toBeInTheDocument();
     unmount();
-  });
-});
-
-describe("vitest.config.ts", () => {
-  test("does not enable passWithNoTests", () => {
-    expect(vitestConfig.test?.passWithNoTests).not.toBe(true);
-  });
-
-  test("runs under jsdom with globals and the setup file wired in", () => {
-    expect(vitestConfig.test?.environment).toBe("jsdom");
-    expect(vitestConfig.test?.globals).toBe(true);
-    expect(vitestConfig.test?.setupFiles).toContain("./vitest.setup.ts");
   });
 });

@@ -4,12 +4,14 @@
 // warnings can never hide silently in CI, and stubs the two browser APIs jsdom does not
 // implement (matchMedia, ResizeObserver) so components that query them don't crash under jsdom.
 //
-// The TextEncoder/TextDecoder polyfill MUST run first, before any other import: jsdom's
-// own TextEncoder does not produce a true Uint8Array instance, which fails esbuild's
-// invariant check during test collection and breaks every test file before it can load.
+// The TextEncoder/TextDecoder polyfill's primary install point is vitest.global-setup.ts,
+// which runs before esbuild's test-collection invariant check. It is reapplied here as a
+// backup: jsdom's environment setup (which runs between globalSetup and this file) may
+// re-shadow globalThis.TextEncoder with its own non-Uint8Array-producing implementation.
 import { TextEncoder, TextDecoder } from "node:util";
 
-Object.assign(global, { TextEncoder, TextDecoder });
+globalThis.TextEncoder = TextEncoder;
+globalThis.TextDecoder = TextDecoder as typeof globalThis.TextDecoder;
 
 import "@testing-library/jest-dom/vitest";
 import { afterEach, vi } from "vitest";
