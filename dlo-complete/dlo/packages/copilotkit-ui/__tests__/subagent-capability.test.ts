@@ -1,0 +1,215 @@
+/**
+ * __tests__/subagent-capability.test.ts
+ * What a build subagent is actually told it may do.
+ *
+ * The fleet's subagents are full agents with a shell, file access and web
+ * access, but the original prompt described a code generator — so they behaved
+ * like one. Across a real run they invented dependency versions they could have
+ * looked up (@stylexjs/unplugin@0.20.5, @tanstack/react-router@1.168.32) and
+ * left verification to the orchestrator, which meant the error was only seen by
+ * a LATER attempt in a fresh process with no memory of the work.
+ */
+
+import { describe, test, expect, vi, beforeEach } from "vitest";
+import { EventEmitter } from "node:events";
+
+const spawnMock = vi.fn();
+vi.mock("node:child_process", () => ({
+  spawn: (...args: unknown[]) => spawnMock(...args),
+  // Must invoke the callback: promisify(execFile) hangs forever otherwise, and
+  // the fleet's review/exit-clause steps go through it.
+  execFile: (cmd: string, _args: string[], opts: unknown, cb: Function) => {
+    const callback = typeof opts === "function" ? (opts as Function) : cb;
+    // `ocr` is absent on this host, so review falls back to a git diff, and an
+    // empty diff is treated as a clean review. Everything else succeeds, so the
+    // module reaches its exit clauses and passes.
+    if (cmd === "ocr") return callback(new Error("ocr not installed"));
+    return callback(null, { stdout: "", stderr: "" });
+  },
+}));
+
+const { renderExitClauseCommands } = await import("../src/lib/orchestrator/phases/build");
+
+function fakeChild() {
+  const child = new EventEmitter() as EventEmitter & Record<string, any>;
+  child.stdin = { end: vi.fn() };
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  queueMicrotask(() => {
+    child.stdout.emit("data", Buffer.from(JSON.stringify({ result: "built" })));
+    child.emit("close", 0);
+  });
+  return child;
+}
+
+beforeEach(() => {
+  spawnMock.mockReset();
+  spawnMock.mockImplementation(() => fakeChild());
+});
+
+describe("renderExitClauseCommands", () => {
+  const clause = (argv: string[], description: string) => ({
+    clauseId: "c1",
+    description,
+    kind: "command",
+    argv,
+  });
+
+  test("renders a runnable command line with its description", () => {
+    const rendered = renderExitClauseCommands({
+      moduleId: "m2",
+      title: "Test harness",
+      prompt: "…",
+      exitClauses: [clause(["npx", "vitest", "run", "tests/harness.test.ts"], "harness tests pass")],
+    } as any);
+
+    expect(rendered).toContain("npx vitest run tests/harness.test.ts");
+    expect(rendered).toContain("# harness tests pass");
+  });
+
+  test("renders every clause, one per line", () => {
+    const rendered = renderExitClauseCommands({
+      moduleId: "m3",
+      title: "Core",
+      prompt: "…",
+      exitClauses: [
+        clause(["npx", "tsc", "--noEmit"], "typecheck passes"),
+        clause(["npx", "vitest", "run", "tests/core.test.ts"], "unit tests pass"),
+      ],
+    } as any);
+
+    expect(rendered.split("\n")).toHaveLength(2);
+    expect(rendered).toContain("npx tsc --noEmit");
+    expect(rendered).toContain("npx vitest run tests/core.test.ts");
+  });
+
+  test("skips non-command clauses, which the fleet cannot run as shell commands", () => {
+    const rendered = renderExitClauseCommands({
+      moduleId: "m4",
+      title: "DB",
+      prompt: "…",
+      exitClauses: [
+        { clauseId: "c1", description: "row exists", kind: "sqlAssertion", sql: "select 1" },
+        clause(["npx", "tsc", "--noEmit"], "typecheck passes"),
+      ],
+    } as any);
+
+    expect(rendered).toContain("npx tsc --noEmit");
+    expect(rendered).not.toContain("sqlAssertion");
+    expect(rendered).not.toContain("select 1");
+  });
+
+  test.each([
+    ["no exit clauses", { exitClauses: [] }],
+    ["an absent exitClauses field", {}],
+    ["a command clause with an empty argv", { exitClauses: [{ clauseId: "c", description: "d", kind: "command", argv: [] }] }],
+    ["a command clause with no argv at all", { exitClauses: [{ clauseId: "c", description: "d", kind: "command" }] }],
+  ])("returns an empty string for %s", (_name, extra) => {
+    expect(renderExitClauseCommands({ moduleId: "m", title: "t", prompt: "p", ...extra } as any)).toBe("");
+  });
+});
+
+describe("the prompt the fleet actually sends", () => {
+  /** Drive one module through the real fleet path and capture the claude argv. */
+  async function promptForModule(overrides: Record<string, unknown> = {}): Promise<string> {
+    vi.resetModules();
+    const state: any = {
+      pipelineId: "p-cap",
+      projectName: "Knowledge Workspace",
+      objectivesMarkdown: "build it",
+      workspaceDir: "/tmp/dlo-cap-workspace",
+      config: { providers: { executor: { model: "claude-sonnet-5" } } },
+      phase: "EXECUTION_RUNNING",
+      createdAt: new Date().toISOString(),
+      lastTransitionAt: new Date().toISOString(),
+      plan: {
+        engineeringPlan: {
+          modules: [
+            {
+              moduleId: "m2",
+              title: "Test harness",
+              prompt: "Install and configure vitest",
+              dependsOn: [],
+              touches: ["vitest.config.ts", "tests/harness.test.ts"],
+              acceptance: ["harness runs"],
+              maxAttempts: 1,
+              exitClauses: [
+                { clauseId: "c1", description: "harness tests pass", kind: "command", argv: ["npx", "vitest", "run", "tests/harness.test.ts"] },
+              ],
+              ...overrides,
+            },
+          ],
+        },
+      },
+      board: { modules: [{ moduleId: "m2", status: "PENDING", attempts: 0 }] },
+    };
+
+    vi.doMock("../src/lib/orchestrator/state", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("../src/lib/orchestrator/state")>();
+      return { ...actual, getPipeline: vi.fn(async () => state), savePipeline: vi.fn(async () => {}) };
+    });
+    // Keep the fleet from proceeding into build/db phases after the module.
+    vi.doMock("../src/lib/orchestrator/phases/finalize", () => ({
+      runDbProvisioningBackground: vi.fn(async () => {}),
+      runBuildBackground: vi.fn(async () => {}),
+      scaffoldMissingInfrastructure: vi.fn(async () => {}),
+    }));
+    // Dependencies "install" instantly; exit clauses are the orchestrator's job.
+    vi.doMock("../src/lib/orchestrator/npm", () => ({
+      installDependencies: vi.fn(async () => ({ ok: true, detail: "", refetchedMetadata: false })),
+      suggestCompatiblePairing: vi.fn(async () => ""),
+    }));
+
+    const { runExecutionBackground } = await import("../src/lib/orchestrator/phases/build");
+    await runExecutionBackground("p-cap");
+
+    const call = spawnMock.mock.calls.find((c) => {
+      const args = c[1] as string[];
+      const p = args[args.indexOf("-p") + 1] ?? "";
+      return p.includes("build subagent");
+    });
+    expect(call, "the fleet should have spawned a build subagent").toBeDefined();
+    const args = call![1] as string[];
+    return args[args.indexOf("-p") + 1]!;
+  }
+
+  test("hands the module its exit-clause commands verbatim", async () => {
+    const prompt = await promptForModule();
+    expect(prompt).toContain("npx vitest run tests/harness.test.ts");
+  });
+
+  test("tells the agent those commands are re-run and the module fails if they fail", async () => {
+    const prompt = await promptForModule();
+    expect(prompt).toMatch(/re-run after you exit/);
+    expect(prompt).toMatch(/Do not finish while one of them is failing/);
+  });
+
+  test("tells the agent to verify dependency versions instead of inventing them", async () => {
+    const prompt = await promptForModule();
+    expect(prompt).toContain("npm view <pkg> versions --json");
+    expect(prompt).toMatch(/NEVER invent a dependency version/);
+  });
+
+  test("tells the agent to read the library and its docs rather than guess", async () => {
+    const prompt = await promptForModule();
+    expect(prompt).toMatch(/inspect node_modules/);
+    expect(prompt).toMatch(/fetch the official documentation/);
+  });
+
+  test("forbids suppressing an error instead of fixing it", async () => {
+    const prompt = await promptForModule();
+    // The mandate is line-wrapped in the prompt, so match across whitespace.
+    expect(prompt).toMatch(/Do not delete a test,\s+loosen an assertion, add a blanket/);
+    expect(prompt).toContain("@ts-ignore");
+  });
+
+  test("still demands verification when the module declares no exit clauses", async () => {
+    const prompt = await promptForModule({ exitClauses: [] });
+    expect(prompt).toMatch(/run this project's typecheck and its test suite/);
+  });
+
+  test("keeps the unit-test mandate alongside the tooling mandate", async () => {
+    const prompt = await promptForModule();
+    expect(prompt).toContain("UNIT TESTS (MANDATORY");
+  });
+});

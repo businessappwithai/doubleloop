@@ -95,6 +95,58 @@ const MODULE_TEST_MANDATE = `UNIT TESTS (MANDATORY — a module without them is 
   wrong, fix the code.
 - Run the test files you wrote before you finish, and leave them passing.`;
 
+/**
+ * Render a module's exit clauses as commands the subagent can actually run.
+ *
+ * These are the checks the orchestrator runs after the subagent exits, and the
+ * module fails if any of them fails. Withholding them made the agent work
+ * blind: it wrote files, exited, and only a LATER attempt — a fresh process
+ * with no memory — saw the error. Handing them over turns three blind attempts
+ * into one attempt that iterates against the real verdict.
+ */
+export function renderExitClauseCommands(mod: PlanModule): string {
+  const runnable = (mod.exitClauses || []).filter(
+    (c) => c.kind === "command" && Array.isArray(c.argv) && c.argv.length > 0
+  );
+  if (runnable.length === 0) return "";
+  return runnable
+    .map((c) => `  ${c.argv!.join(" ")}${c.description ? `    # ${c.description}` : ""}`)
+    .join("\n");
+}
+
+/**
+ * How the build subagent should work. It is a full agent with a shell, file
+ * access and web access — but the original prompt described a code generator,
+ * so it behaved like one: it guessed dependency versions it could have looked
+ * up, and left verification to the orchestrator.
+ */
+function toolingMandate(clauseCommands: string): string {
+  return `HOW TO WORK — you are an agent with tools, so use them instead of guessing:
+- You have a shell in this workspace. Anything you are unsure about, CHECK rather than assume.
+- NEVER invent a dependency version. Before pinning one, confirm it exists and that its peers agree:
+    npm view <pkg> versions --json          # what actually exists
+    npm view <pkg> peerDependencies         # what it demands of its peers
+  A version that does not exist fails the entire module at install time.
+- Read the library instead of guessing at its API: inspect node_modules/<pkg> (its README, its
+  .d.ts, its package.json "exports"), and fetch the official documentation on the web when the
+  local files do not settle it.
+- Diagnose from real output. Run the failing command, read the whole error including the indented
+  detail beneath the first line, and fix the actual cause.
+- Environmental failures are fixed in configuration, never by weakening code or tests: a missing
+  polyfill belongs in the test setup file, a duplicated dependency is a version disagreement in
+  package.json, a module-resolution error is a tsconfig/bundler path issue. Do not delete a test,
+  loosen an assertion, add a blanket \`any\`, or \`@ts-ignore\` your way past a real error.
+${clauseCommands
+      ? `\nVERIFY BEFORE YOU FINISH — these exact commands are re-run after you exit, and the module
+FAILS if any of them fails. Run them yourself, fix what they report, and repeat until they pass:
+${clauseCommands}\n
+Do not finish while one of them is failing. If you genuinely cannot make one pass, say so
+explicitly at the end and state precisely what you tried and what the remaining error is — that
+report becomes the next attempt's starting point.`
+      : `\nVERIFY BEFORE YOU FINISH: run this project's typecheck and its test suite, fix what they
+report, and repeat until they pass.`}`;
+}
+
 function assignmentFor(state: PipelineState, moduleId: string): AgentAssignment {
   const fromDesign = state.agentDesign?.modules?.[moduleId];
   if (fromDesign) return fromDesign;
@@ -135,9 +187,15 @@ Rules:
 - Match Architecture.md and Database.md exactly (stack, conventions, schema).
 - ${assignment.systemPrompt ? assignment.systemPrompt : "Follow the project's established conventions."}
 - Do not modify files owned by other modules except where the touches list says so.
-- When done, verify your files parse/compile if a quick check is possible.
+
+${toolingMandate(renderExitClauseCommands(mod))}
 
 ${MODULE_TEST_MANDATE}`;
+
+  // Skills discovered by skillManager are handed to the fleet, not just to the
+  // Design Analyst — a build subagent that cannot reach the project's skills is
+  // strictly less capable than the planner that wrote its instructions.
+  const pluginDirs: string[] = state.config?.skills?.pluginDirs ?? [];
 
   await spawnClaudeAgent({
     prompt,
@@ -147,6 +205,8 @@ ${MODULE_TEST_MANDATE}`;
     auth,
     ...(apiKey ? { apiKey } : {}),
     timeoutMs: MODULE_TIMEOUT_MS,
+    pipelineId: state.pipelineId,
+    ...(pluginDirs.length ? { pluginDirs } : {}),
   });
 }
 

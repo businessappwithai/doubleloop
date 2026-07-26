@@ -33,6 +33,23 @@ const MAX_FIX_ROUNDS = 3;
 /** How many times the Test Author subagent may be asked to build the suite. */
 const MAX_TEST_AUTHOR_ROUNDS = 2;
 
+/**
+ * Shared by the repair subagents (Fixer, Test Author). Same lesson as the build
+ * fleet's: these are agents with a shell and web access, and a prompt that reads
+ * like a code-generation request gets code-generation behavior — guessed
+ * versions and unverified fixes.
+ */
+const REPAIR_TOOLING_MANDATE = `- You are an agent with tools. Check rather than assume:
+  read the failing file, run the failing command, inspect node_modules/<pkg> for a library's real
+  API, and fetch its documentation on the web when the local files do not settle it.
+- Never invent a dependency version. Confirm with \`npm view <pkg> versions --json\` and
+  \`npm view <pkg> peerDependencies\` before pinning anything.
+- Read the WHOLE error, including the indented detail under the first line — that is where the
+  cause usually is (a duplicated dependency, a missing polyfill, a resolution mismatch).
+- Fix environmental failures in configuration, not by weakening code: a missing global belongs in
+  the test setup file, a version disagreement in package.json. Never delete a test, loosen an
+  assertion, add a blanket \`any\`, or \`@ts-ignore\` past a real error.`;
+
 // ─── Fixer subagent ──────────────────────────────────────────────────────────
 
 async function runFixerSubagent(
@@ -55,7 +72,10 @@ ${failureOutput.slice(-4000)}
 Rules:
 - Make the smallest correct fix; do not refactor unrelated code.
 - No placeholders or skipped tests.
-- Verify your fix compiles if a quick check is possible.`,
+
+${REPAIR_TOOLING_MANDATE}
+- Re-run the ${failureKind} yourself and keep going until it passes. Do not finish while it fails;
+  if you truly cannot fix it, state exactly what you tried and what the remaining error is.`,
     model,
     cwd: state.workspaceDir,
     permissionMode,
@@ -116,6 +136,8 @@ Your job is to make this application genuinely tested. Do ALL of the following:
 5. Never skip a test and never weaken an assertion to make it pass. If a test exposes a real bug in the
    application, fix the application.
 6. Run the suite yourself and leave it passing with a non-zero number of tests executed.
+
+${REPAIR_TOOLING_MANDATE}
 ${testingStrategy ? `\nArchitecture.md's testing contract for this project:\n${testingStrategy}\n` : ""}
 Report at the end how many test files and test cases you added.`,
     model,
