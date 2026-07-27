@@ -11,7 +11,6 @@ import {
   type DOMExportOutput,
   type EditorConfig,
   type LexicalNode,
-  type NodeKey,
   type SerializedLexicalNode,
   type Spread,
 } from "lexical";
