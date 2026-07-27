@@ -1,0 +1,85 @@
+# src/modules/concepts/concept-schema.graphql — SDL fragment for the concepts module
+# (Architecture.md "GraphQL conventions (Relay, mandated)"; Implementation.md m10). `Query` and
+# `Mutation` are opened once in schema.root.graphql; this fragment only `extend`s them —
+# scripts/emit-schema.ts throws `schema.duplicateTypeDefinition` if two documents each *define*
+# the same type name. `Node`, `PageInfo` and `DateTime` are declared once in the root document.
+# `hierarchy-schema.graphql` further `extend`s `Concept` with `children`/`ancestors` — that is a
+# legal SDL extension of a type this document defines, not a redefinition.
+
+"""
+A Concept (Database.md `concepts`): one hierarchical node, one Markdown document, specialised for
+Google Cloud's Open Knowledge Format. `path` is the materialised slash-separated ancestor slug
+chain; `sortKey` is the fractional-index position among its siblings (`hierarchy/sort-key.ts`).
+"""
+type Concept implements Node {
+  id: ID!
+  bundleId: ID!
+  parentId: ID
+  slug: String!
+  path: String!
+  title: String!
+  sortKey: String!
+  depth: Int!
+  isIndex: Boolean!
+  childCount: Int!
+  version: Int!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type ConceptEdge {
+  node: Concept!
+  cursor: String!
+}
+
+type ConceptConnection {
+  edges: [ConceptEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+extend type Query {
+  concept(bundleId: ID!, id: ID!): Concept
+  conceptByPath(bundleId: ID!, path: String!): Concept
+  concepts(bundleId: ID!, first: Int, after: String, last: Int, before: String): ConceptConnection!
+}
+
+input CreateConceptInput {
+  bundleId: ID!
+  parentId: ID
+  slug: String!
+  title: String!
+  isIndex: Boolean
+}
+
+type CreateConceptPayload {
+  concept: Concept!
+}
+
+input UpdateConceptMetadataInput {
+  bundleId: ID!
+  id: ID!
+  expectedVersion: Int!
+  title: String
+  isIndex: Boolean
+}
+
+type UpdateConceptMetadataPayload {
+  concept: Concept!
+}
+
+input ArchiveConceptInput {
+  bundleId: ID!
+  id: ID!
+  expectedVersion: Int!
+}
+
+type ArchiveConceptPayload {
+  concept: Concept!
+}
+
+extend type Mutation {
+  createConcept(input: CreateConceptInput!): CreateConceptPayload!
+  updateConceptMetadata(input: UpdateConceptMetadataInput!): UpdateConceptMetadataPayload!
+  archiveConcept(input: ArchiveConceptInput!): ArchiveConceptPayload!
+}
