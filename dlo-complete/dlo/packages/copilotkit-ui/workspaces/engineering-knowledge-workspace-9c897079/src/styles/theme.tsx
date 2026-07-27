@@ -8,7 +8,6 @@
 // CSS is loaded as a static stylesheet, not constructed from a runtime theme object.
 import {
   createContext,
-  createElement,
   useContext,
   useEffect,
   useMemo,
