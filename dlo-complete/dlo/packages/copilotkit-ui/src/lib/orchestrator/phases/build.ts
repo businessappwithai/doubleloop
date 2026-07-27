@@ -638,6 +638,7 @@ async function runOneModule(pipelineId: string, mod: PlanModule): Promise<boolea
   // Seed the critique with the failure from a previous fleet run (if the
   // gate was reopened after a FAILED execution) so retries keep their memory.
   const label = mod.title || mod.moduleId;
+  let transientRetries = 0;
   let critique =
     (state.board?.modules.find((m) => m.moduleId === mod.moduleId) as any)?.failure || "";
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -654,6 +655,24 @@ async function runOneModule(pipelineId: string, mod: PlanModule): Promise<boolea
       }
     } catch (buildErr: any) {
       const msg = buildErr.message?.slice(0, 200) ?? "unknown error";
+
+      // A call that never reached the model is not the module's fault. Retry it
+      // with backoff WITHOUT consuming an attempt — otherwise a few minutes of
+      // API capacity trouble burns all three attempts and marks perfectly good
+      // modules FAILED, which is exactly what happened to m5, m18 and m20 in one
+      // run: three simultaneous exits with 0 tokens, 0 duration and 0 cost.
+      if (isTransientBuilderError(buildErr.message ?? "") && transientRetries < MAX_TRANSIENT_RETRIES) {
+        transientRetries++;
+        const waitMs = 30_000 * transientRetries;
+        appendLog(
+          pipelineId,
+          `[Module] "${label}" — the model call failed before doing any work (transient, ${transientRetries}/${MAX_TRANSIENT_RETRIES}); waiting ${waitMs / 1000}s and retrying without using an attempt.`
+        );
+        await new Promise((r) => setTimeout(r, waitMs));
+        attempt--;
+        continue;
+      }
+
       console.warn(`[Fleet] ${mod.moduleId} builder error:`, msg);
       if (assignment.vendor === "codewhale") {
         appendLog(pipelineId, `[Module] "${label}" — CodeWhale unavailable, falling back to Claude`);
@@ -735,6 +754,29 @@ async function updateModuleStatus(
 }
 
 const FLEET_MAX_RETRIES = 3;
+/** Backoff retries for a model call that never ran; these don't consume attempts. */
+const MAX_TRANSIENT_RETRIES = 5;
+
+/**
+ * Did the model call fail before doing any work?
+ *
+ * The Claude CLI reports a rate limit / capacity failure as a normal non-zero
+ * exit whose JSON payload records zero tokens, zero API duration and zero cost —
+ * indistinguishable, to the naive check, from a subagent that ran and produced
+ * broken code. Treating the two the same let a few minutes of API trouble burn
+ * every attempt of three healthy modules at once.
+ */
+export function isTransientBuilderError(message: string): boolean {
+  // No trailing \b: these appear inside identifiers too ("rate_limit_error").
+  if (/\b(?:429|rate[ _-]?limit|overloaded|usage limit|capacity|temporarily unavailable|service unavailable|internal server error|ECONNRESET|ETIMEDOUT|socket hang up)/i.test(message)) {
+    return true;
+  }
+  // The zero-work signature: an error payload that consumed nothing at all.
+  const noApiTime = /"duration_api_ms"\s*:\s*0\b/.test(message);
+  const noInput = /"input_tokens"\s*:\s*0\b/.test(message);
+  const noCost = /"total_cost_usd"\s*:\s*0\b/.test(message);
+  return /"is_error"\s*:\s*true/.test(message) && noApiTime && (noInput || noCost);
+}
 
 /**
  * Prepare the board for another full-fleet attempt.

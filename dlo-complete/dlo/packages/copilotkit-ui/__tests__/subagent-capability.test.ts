@@ -28,7 +28,7 @@ vi.mock("node:child_process", () => ({
   },
 }));
 
-const { renderExitClauseCommands } = await import("../src/lib/orchestrator/phases/build");
+const { renderExitClauseCommands, isTransientBuilderError } = await import("../src/lib/orchestrator/phases/build");
 
 function fakeChild() {
   const child = new EventEmitter() as EventEmitter & Record<string, any>;
@@ -242,5 +242,37 @@ describe("reviewPathspec", () => {
   test("falls back when every declared entry is blank", async () => {
     const { reviewPathspec } = await import("../src/lib/orchestrator/phases/build");
     expect(reviewPathspec({ touches: ["", "  "] } as any)).toEqual(["."]);
+  });
+});
+
+describe("isTransientBuilderError", () => {
+  // Three modules (m5, m18, m20) were marked FAILED in one run by simultaneous
+  // exits carrying zero tokens, zero API duration and zero cost — the model call
+  // never ran. Charging those to the module's attempt budget burns healthy work.
+  const zeroWork =
+    'claude exited 1: {"is_error":true,"duration_api_ms":0,"num_turns":1,' +
+    '"stop_reason":"stop_sequence","total_cost_usd":0,"usage":{"input_tokens":0}}';
+
+  test.each([
+    ["the observed zero-work payload", zeroWork],
+    ["an HTTP 429", "Error: 429 Too Many Requests"],
+    ["a rate limit", "rate_limit_error: too many requests"],
+    ["an overloaded upstream", "overloaded_error"],
+    ["a usage limit", "usage limit reached"],
+    ["a dropped socket", "socket hang up"],
+    ["a connection reset", "read ECONNRESET"],
+  ])("treats %s as transient", (_name, message) => {
+    expect(isTransientBuilderError(message)).toBe(true);
+  });
+
+  test.each([
+    ["a real code failure that consumed tokens",
+      'claude exited 1: {"is_error":true,"duration_api_ms":48213,"total_cost_usd":0.42,"usage":{"input_tokens":9100}}'],
+    ["a timeout after real work", "claude timed out after 1200000ms"],
+    ["a missing binary", "spawn claude ENOENT"],
+    ["a plain build error", "TypeError: Cannot read properties of undefined"],
+    ["an empty message", ""],
+  ])("does NOT treat %s as transient", (_name, message) => {
+    expect(isTransientBuilderError(message)).toBe(false);
   });
 });
