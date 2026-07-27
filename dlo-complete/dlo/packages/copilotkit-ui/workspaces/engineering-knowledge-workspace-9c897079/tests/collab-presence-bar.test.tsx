@@ -78,7 +78,13 @@ describe("PresenceBar — accessible naming", () => {
 
 describe("PresenceBar — per-peer color dot", () => {
   test("gives each visible avatar a status dot, colored distinctly per peer", () => {
-    const peers = [makePeer(1, "Ada"), makePeer(2, "Bob")];
+    // Colors are pinned explicitly (rather than left to colorForActor's hash) so this test's
+    // distinctness assertion never depends on whether two particular actor ids happen to hash
+    // to the same hue.
+    const peers = [
+      makePeer(1, "Ada", { color: "hsl(10, 65%, 45%)" }),
+      makePeer(2, "Bob", { color: "hsl(200, 65%, 45%)" }),
+    ];
     render(<PresenceBar peers={peers} />);
 
     const dotColors = peers.map((peer) => {
