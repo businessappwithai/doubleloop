@@ -1,0 +1,76 @@
+# src/modules/bundles/bundle-schema.graphql — SDL fragment for the bundles module
+# (Architecture.md "GraphQL conventions (Relay, mandated)"; Implementation.md m9). `Query` and
+# `Mutation` are opened once in schema.root.graphql; this fragment only `extend`s them —
+# scripts/emit-schema.ts throws `schema.duplicateTypeDefinition` if two documents each *define*
+# the same type name, so re-declaring `type Query { ... }` here instead of `extend`-ing it would
+# fail the merge. `Node`, `PageInfo`, `TrustLevel` and `DateTime` are likewise declared once in
+# the root document and reused here without redefinition.
+
+"""A self-contained collection of Concepts and the unit of Git synchronisation (Database.md `bundles`)."""
+type Bundle implements Node {
+  id: ID!
+  workspaceId: String!
+  slug: String!
+  title: String!
+  description: String!
+  okfVersion: String!
+  defaultTrust: TrustLevel!
+  conceptCount: Int!
+  version: Int!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type BundleEdge {
+  node: Bundle!
+  cursor: String!
+}
+
+type BundleConnection {
+  edges: [BundleEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+extend type Query {
+  bundle(id: ID!): Bundle
+  bundles(workspaceId: String!, first: Int, after: String, last: Int, before: String): BundleConnection!
+}
+
+input CreateBundleInput {
+  workspaceId: String!
+  slug: String!
+  title: String!
+  description: String
+  okfVersion: String
+  defaultTrust: TrustLevel
+}
+
+type CreateBundlePayload {
+  bundle: Bundle!
+}
+
+input RenameBundleInput {
+  id: ID!
+  expectedVersion: Int!
+  title: String!
+}
+
+type RenameBundlePayload {
+  bundle: Bundle!
+}
+
+input ArchiveBundleInput {
+  id: ID!
+  expectedVersion: Int!
+}
+
+type ArchiveBundlePayload {
+  bundle: Bundle!
+}
+
+extend type Mutation {
+  createBundle(input: CreateBundleInput!): CreateBundlePayload!
+  renameBundle(input: RenameBundleInput!): RenameBundlePayload!
+  archiveBundle(input: ArchiveBundleInput!): ArchiveBundlePayload!
+}

@@ -1,0 +1,53 @@
+# src/modules/documents/document-schema.graphql — the documents module's SDL fragment
+# (Implementation.md m11). `ConceptDocument` does not `implement Node`: it is 1:1 with a Concept
+# (Database.md `concept_documents.concept_id PRIMARY KEY REFERENCES concepts (id)`) and is only
+# ever reached as a field off `Concept`, never fetched directly via `node(id:)` — so it has no
+# entry in `src/core/global-id.ts`'s `NODE_TYPES`. `scripts/emit-schema.ts` concatenates this file
+# with every other module fragment and the root document into `schema.graphql`.
+
+"""
+The fluid half of a Concept (Database.md `concept_documents`): the Lexical block payload, the
+Markdown projection used for full-text search and Git export, and the state needed to resume Yjs
+CRDT collaboration.
+"""
+type ConceptDocument {
+  conceptId: ID!
+  """Serialized block tree — validated against this module's block schema on every read."""
+  contentBlocks: JSON!
+  bodyMarkdown: String!
+  """Hex-64 SHA-256 digest of `bodyMarkdown`."""
+  bodySha256: String!
+  blockCount: Int!
+  wordCount: Int!
+  """Base64-encoded Yjs state vector; a reconnecting client sends this to request a diff."""
+  crdtStateVectorB64: String!
+  version: Int!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+input SaveDocumentInput {
+  conceptId: ID!
+  title: String!
+  contentBlocks: JSON!
+  expectedVersion: Int!
+}
+
+input ApplyCrdtUpdateInput {
+  conceptId: ID!
+  title: String!
+  """Base64-encoded Yjs binary update."""
+  updateB64: String!
+  expectedVersion: Int!
+}
+
+extend type Query {
+  conceptDocument(conceptId: ID!): ConceptDocument
+}
+
+extend type Mutation {
+  """The non-CRDT write path: replaces `contentBlocks` wholesale under optimistic concurrency."""
+  saveDocument(input: SaveDocumentInput!): ConceptDocument!
+  """Merges a Yjs binary update into the document's CRDT state and returns the merged result."""
+  applyCrdtUpdate(input: ApplyCrdtUpdateInput!): ConceptDocument!
+}
