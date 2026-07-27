@@ -13,7 +13,13 @@ import { createFakeGit, createMemoryFs } from "./helpers/fake-ports";
 
 // node-git.ts is imported after this mock is declared; Vitest hoists `vi.mock` calls to the top
 // of the file, before any import, so `createNodeGit` below always sees the mocked module.
-vi.mock("node:child_process", () => ({ execFile: vi.fn() }));
+// A `default` export is required as well as the named one: Node core modules are
+// consumed both ways in this dependency graph, and a factory without it makes Vitest
+// throw "No default export is defined on the node:child_process mock" before any test runs.
+vi.mock("node:child_process", () => {
+  const execFile = vi.fn();
+  return { execFile, default: { execFile } };
+});
 
 import { execFile, type ExecFileException } from "node:child_process";
 import { createNodeGit } from "../src/server/adapters/node-git";
