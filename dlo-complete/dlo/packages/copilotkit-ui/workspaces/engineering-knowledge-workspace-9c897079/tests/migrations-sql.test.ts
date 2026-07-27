@@ -1,3 +1,9 @@
+// @vitest-environment node
+//
+// Runs in the node environment, not jsdom: this suite reads real files off disk via
+// `fileURLToPath(new URL(..., import.meta.url))`, and under the jsdom environment wrapper
+// import.meta.url is not resolved to a file: URL, so fileURLToPath throws
+// ERR_INVALID_URL_SCHEME before any assertion runs. There is nothing DOM-dependent here.
 // tests/migrations-sql.test.ts — module m6 (SQL migrations and the migration runner). A static
 // scan of the real files under sql/migrations/ and sql/seed/: real disk reads only (no database,
 // no network, no child process spawned), so this stays part of the hermetic `pnpm test` suite.

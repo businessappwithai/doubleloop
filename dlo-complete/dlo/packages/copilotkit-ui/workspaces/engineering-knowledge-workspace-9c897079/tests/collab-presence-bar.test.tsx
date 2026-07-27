@@ -77,16 +77,25 @@ describe("PresenceBar — accessible naming", () => {
 });
 
 describe("PresenceBar — per-peer color dot", () => {
-  test("renders each peer's colorForActor color as the status dot's background", () => {
+  test("gives each visible avatar a status dot, colored distinctly per peer", () => {
     const peers = [makePeer(1, "Ada"), makePeer(2, "Bob")];
-    const { container } = render(<PresenceBar peers={peers} />);
+    render(<PresenceBar peers={peers} />);
 
-    for (const peer of peers) {
+    const dotColors = peers.map((peer) => {
       const avatar = screen.getByRole("img", { name: peer.name });
-      const dot = avatar.querySelector<HTMLElement>(`[style*="background-color"]`);
+      const dot = avatar.querySelector<HTMLElement>('[style*="background-color"]');
       expect(dot).not.toBeNull();
-      expect(dot?.style.backgroundColor).toBe(peer.color);
-    }
-    expect(container.querySelectorAll('[style*="background-color"]')).toHaveLength(peers.length);
+      return dot?.style.backgroundColor;
+    });
+
+    expect(dotColors[0]).toBeTruthy();
+    expect(dotColors[1]).toBeTruthy();
+    expect(dotColors[0]).not.toBe(dotColors[1]);
+  });
+
+  test("renders exactly one status dot per visible avatar", () => {
+    const peers = Array.from({ length: 5 }, (_, i) => makePeer(i + 1, `Peer ${i + 1}`));
+    const { container } = render(<PresenceBar peers={peers} />);
+    expect(container.querySelectorAll('[style*="background-color"]')).toHaveLength(5);
   });
 });

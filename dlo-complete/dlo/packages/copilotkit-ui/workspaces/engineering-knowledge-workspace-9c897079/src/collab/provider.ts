@@ -165,7 +165,7 @@ export function createCollabProvider(options: CreateCollabProviderOptions): Coll
   }
 
   return {
-    awareness: wsProvider.awareness,
+    awareness: wsProvider.awareness as unknown as ProviderAwareness,
     get status() {
       return status;
     },
