@@ -24,7 +24,7 @@ import {
   pushPhaseHistory,
   writeWorkspaceMarkdown,
 } from "../state";
-import { spawnClaudeAgent, claudeAuthFromConfig, claudePermissionModeFromConfig } from "../subagents/claude";
+import { spawnClaudeAgent, claudeAuthFromConfig, claudePermissionModeFromConfig, BUILDER_ALLOWED_TOOLS } from "../subagents/claude";
 import { installDependencies } from "../npm";
 import { appendLog } from "../logStore";
 
@@ -82,6 +82,7 @@ ${REPAIR_TOOLING_MANDATE}
     auth,
     ...(apiKey ? { apiKey } : {}),
     timeoutMs: 15 * 60_000,
+    allowedTools: BUILDER_ALLOWED_TOOLS,
   });
 }
 
@@ -146,6 +147,7 @@ Report at the end how many test files and test cases you added.`,
     auth,
     ...(apiKey ? { apiKey } : {}),
     timeoutMs: 20 * 60_000,
+    allowedTools: BUILDER_ALLOWED_TOOLS,
     pipelineId: state.pipelineId,
   });
 }

@@ -89,7 +89,11 @@ export function setLocalPresence(
     color: presence.color ?? colorForActor(presence.actorId),
     lastSeen: clock.now(),
   };
-  awareness.setLocalState(state);
+  // `@lexical/yjs`'s `UserState` also declares `anchorPos`/`focusPos`/`focusing`/`awarenessData`,
+  // which are that library's own remote-cursor bookkeeping — irrelevant to plain presence, and
+  // never read back by this module. The awareness map itself is untyped storage at runtime, so
+  // this cast just narrows past a library type built for a different (cursor-rendering) purpose.
+  awareness.setLocalState(state as unknown as Parameters<ProviderAwareness["setLocalState"]>[0]);
 }
 
 export interface ComputePresenceOptions {
