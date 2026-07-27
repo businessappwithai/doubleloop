@@ -262,6 +262,20 @@ ${MODULE_TEST_MANDATE}`;
 
 // ─── Review + verification ──────────────────────────────────────────────────
 
+/**
+ * The `git diff` pathspec a module's review should be limited to.
+ *
+ * A module is only answerable for the files it owns. Reviewing the whole
+ * workspace makes concurrent modules fail each other, and the failure text is
+ * about files the blamed module never touched — so the retry has nothing it can
+ * act on. Falls back to the whole workspace when a module declares no `touches`,
+ * which is the only case where we genuinely do not know its boundary.
+ */
+export function reviewPathspec(mod?: PlanModule): string[] {
+  const touches = (mod?.touches ?? []).filter((t) => typeof t === "string" && t.trim().length > 0);
+  return touches.length > 0 ? touches : ["."];
+}
+
 async function reviewWorkspace(state: PipelineState, _mod?: PlanModule): Promise<{ passed: boolean; critique: string }> {
   // Prefer the ocr CLI when present; otherwise a Claude diff review.
   try {
@@ -287,7 +301,16 @@ async function reviewWorkspace(state: PipelineState, _mod?: PlanModule): Promise
     // Confine the diff to the workspace directory — a bare `git diff` from a
     // workspace nested inside a larger repo returns the WHOLE repo's diff,
     // and the reviewer would fail modules over unrelated files.
-    const { stdout: diffFull } = await execFileAsync("git", ["diff", "--", "."], {
+    //
+    // Then confine it further to the files THIS module owns. The fleet runs up
+    // to maxConcurrent modules at once in this single directory, so a
+    // workspace-wide diff also contains other modules' half-written work, and
+    // the reviewer blames this module for it. Observed: m4 was failed three
+    // times over "__root.tsx imports ThemeProvider from ../styles/theme, but
+    // src/styles/theme.ts is deleted in this same diff" — both of those files
+    // belong to m16, which was mid-flight in another process.
+    const pathspec = reviewPathspec(_mod);
+    const { stdout: diffFull } = await execFileAsync("git", ["diff", "--", ...pathspec], {
       cwd: state.workspaceDir,
       timeout: 15_000,
     }).catch(() => ({ stdout: "" }));

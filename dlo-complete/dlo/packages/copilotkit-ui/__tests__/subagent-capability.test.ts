@@ -213,3 +213,34 @@ describe("the prompt the fleet actually sends", () => {
     expect(prompt).toContain("UNIT TESTS (MANDATORY");
   });
 });
+
+describe("reviewPathspec", () => {
+  // The fleet runs several modules at once in ONE workspace directory, so a
+  // workspace-wide review diff contains other modules' half-written files.
+  // Observed: m4 was failed three times over files owned by m16, which was
+  // mid-flight in another process, and the critique named nothing m4 could fix.
+  test("limits the review to the files the module owns", async () => {
+    const { reviewPathspec } = await import("../src/lib/orchestrator/phases/build");
+    expect(reviewPathspec({ touches: ["src/config/config.ts", "tests/config.test.ts"] } as any)).toEqual([
+      "src/config/config.ts",
+      "tests/config.test.ts",
+    ]);
+  });
+
+  test("falls back to the whole workspace when the module declares no files", async () => {
+    const { reviewPathspec } = await import("../src/lib/orchestrator/phases/build");
+    expect(reviewPathspec({ touches: [] } as any)).toEqual(["."]);
+    expect(reviewPathspec({} as any)).toEqual(["."]);
+    expect(reviewPathspec(undefined)).toEqual(["."]);
+  });
+
+  test("ignores blank entries rather than turning them into a bare pathspec", async () => {
+    const { reviewPathspec } = await import("../src/lib/orchestrator/phases/build");
+    expect(reviewPathspec({ touches: ["", "   ", "src/a.ts"] } as any)).toEqual(["src/a.ts"]);
+  });
+
+  test("falls back when every declared entry is blank", async () => {
+    const { reviewPathspec } = await import("../src/lib/orchestrator/phases/build");
+    expect(reviewPathspec({ touches: ["", "  "] } as any)).toEqual(["."]);
+  });
+});
