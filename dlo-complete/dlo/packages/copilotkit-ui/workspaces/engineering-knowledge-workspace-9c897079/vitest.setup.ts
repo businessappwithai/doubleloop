@@ -13,6 +13,13 @@ import { TextEncoder, TextDecoder } from "node:util";
 globalThis.TextEncoder = TextEncoder;
 globalThis.TextDecoder = TextDecoder as typeof globalThis.TextDecoder;
 
+// @astryxdesign/core's compiled output was authored against the classic JSX runtime, where
+// React must be in module/global scope even though this project's tsconfig uses the automatic
+// "react-jsx" transform. Exposing React globally bridges that gap for the dependency's code
+// without affecting how this project's own JSX is compiled.
+import React from "react";
+globalThis.React = React;
+
 import "@testing-library/jest-dom/vitest";
 import { afterEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";

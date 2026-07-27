@@ -1,3 +1,9 @@
+// @vitest-environment node
+//
+// Runs in the node environment, not jsdom: this suite reads real files off disk via
+// `fileURLToPath(new URL(..., import.meta.url))`, and under the jsdom environment wrapper
+// import.meta.url is not resolved to a file: URL, so fileURLToPath throws
+// ERR_INVALID_URL_SCHEME before any assertion runs. There is nothing DOM-dependent here.
 // tests/emit-schema.test.ts — module m7 (Relay conventions). extractTopLevelTypeNames and
 // mergeSchemaDocuments are exercised as pure functions against fixture SDL strings (deterministic
 // ordering, extend-vs-define, duplicate-type-definition failure); emitSchema's real filesystem
