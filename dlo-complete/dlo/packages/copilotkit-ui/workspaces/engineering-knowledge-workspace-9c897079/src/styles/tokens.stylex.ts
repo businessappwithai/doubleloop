@@ -4,7 +4,7 @@
 // These cover shell-level layout concerns Astryx's own component props don't reach (fixed
 // pane widths, chrome dividers) — everything at the component level keeps using Astryx's own
 // tokens. Colour values use `light-dark()` so dark mode is a token override resolved by the
-// browser's active `color-scheme` (driven by `data-theme` on <html>, see src/styles/theme.ts),
+// browser's active `color-scheme` (driven by `data-theme` on <html>, see src/styles/theme.tsx),
 // never a second stylesheet.
 import * as stylex from "@stylexjs/stylex";
 

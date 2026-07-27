@@ -1,15 +1,19 @@
 // vitest.config.ts — the unit-test harness config (Architecture.md "Testing Strategy").
-// Deliberately separate from app.config.ts: unit tests run under jsdom via plain
-// @vitejs/plugin-react, never through the TanStack Start / StyleX build pipeline, so a
-// test never accidentally depends on the server runtime. The empty-suite override is
-// intentionally left unset — Vitest's own default already fails an empty or mis-globbed
-// suite loudly rather than reporting a false green (see tests/harness.test.ts).
+// Mirrors app.config.ts's plugin stack including @astryxdesign/build/vite's StyleX
+// compilation, so components using stylex.create / stylex.defineVars compile correctly
+// under jsdom. Plain @vitejs/plugin-react alone is not sufficient — StyleX requires the
+// Astryx plugin to run first. Deliberately still omits tanstackStart(): unit tests run
+// under jsdom, never through the server runtime, so only the StyleX half of the app
+// config's plugin stack is needed here. The empty-suite override is intentionally left
+// unset — Vitest's own default already fails an empty or mis-globbed suite loudly rather
+// than reporting a false green (see tests/harness.test.ts).
 import { defineConfig } from "vitest/config";
 import viteReact from "@vitejs/plugin-react";
+import { astryxStylex } from "@astryxdesign/build/vite";
 import { fileURLToPath } from "node:url";
 
 export default defineConfig({
-  plugins: [viteReact()],
+  plugins: [...astryxStylex(), viteReact()],
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

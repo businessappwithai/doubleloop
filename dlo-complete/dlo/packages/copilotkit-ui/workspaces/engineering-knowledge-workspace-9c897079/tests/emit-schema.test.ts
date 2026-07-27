@@ -6,6 +6,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, test, expect } from "vitest";
 import {
   emitSchema,
@@ -18,7 +19,7 @@ import { ConfigError } from "../src/core/errors";
 describe("src/graphql/schema.root.graphql", () => {
   test("is syntactically valid SDL declaring Node, PageInfo, the OKF enums, the scalars, Query and Mutation", () => {
     const rootPath = new URL("../src/graphql/schema.root.graphql", import.meta.url);
-    const sdl = readFileSync(rootPath, "utf8");
+    const sdl = readFileSync(fileURLToPath(rootPath), "utf8");
 
     expect(extractTopLevelTypeNames(sdl)).toEqual([
       "Node",

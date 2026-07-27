@@ -1,7 +1,7 @@
 // src/routes/__root.tsx — the document shell every route renders inside. Loads the Astryx
 // theme cascade and the workspace's own global reset before any route content paints, so
 // there is no flash of unstyled content on the SSR'd first response. Mounts the theme provider
-// (src/styles/theme.ts) and the three-pane AppFrame (src/components/shell) so every route
+// (src/styles/theme.tsx) and the three-pane AppFrame (src/components/shell) so every route
 // renders inside the sidebar/main/inspector layout with dark mode wired up.
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import type { ReactNode } from "react";

@@ -1,6 +1,6 @@
 // src/components/shell/ThemeToggle.tsx — a single control that cycles the workspace's theme
 // preference light -> dark -> system -> light. Reads/writes through `useThemePreference`
-// (src/styles/theme.ts) rather than owning any theme state itself, so every host (ToolbarShell,
+// (src/styles/theme.tsx) rather than owning any theme state itself, so every host (ToolbarShell,
 // or any future settings panel) sees one source of truth for the resolved theme.
 import type { ReactElement } from "react";
 import { Button } from "@astryxdesign/core";
