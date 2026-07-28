@@ -1,0 +1,16 @@
+# src/modules/collab/collab-schema.graphql — SDL fragment for the collaboration module
+# (Implementation.md m13). `PresenceEntry` is not a `Node`: it is an ephemeral, in-memory
+# projection of who is currently in a room, never a persisted entity, so it carries no global id.
+
+"""A live collaborator currently present in a concept's collaboration room."""
+type PresenceEntry {
+  actorId: ID!
+  displayName: String!
+  color: String!
+  lastSeenAt: DateTime!
+}
+
+extend type Query {
+  """Live presence for a concept's collaboration room. `[]` when nobody is currently editing."""
+  presence(conceptId: ID!): [PresenceEntry!]!
+}

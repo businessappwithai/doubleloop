@@ -158,7 +158,7 @@ describe("keyBetween — validation failures", () => {
   test("throws ValidationError('hierarchy.sortKeySpaceExhausted') when nothing sorts between two adjacent keys at the alphabet minimum", () => {
     const zero = SORT_KEY_ALPHABET[0]!;
     const a = zero;
-    const b = zero + SORT_KEY_ALPHABET[1]!;
+    const b = zero + zero;
     try {
       keyBetween(a, b);
       throw new Error("expected keyBetween to throw");

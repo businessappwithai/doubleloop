@@ -9,6 +9,7 @@
 // update — after registering the transform — is equivalent to "typing" the shortcut.
 import { describe, test, expect, beforeEach } from "vitest";
 import {
+  $createLineBreakNode,
   $createParagraphNode,
   $createTextNode,
   $getRoot,
@@ -324,27 +325,33 @@ describe("divider shortcut", () => {
 
 describe("transform guards", () => {
   test("does not transform when the text node is not the sole child of its paragraph", () => {
+    // A LineBreakNode sibling (rather than a second TextNode, which Lexical's reconciler
+    // would silently merge into the first) reliably keeps childrenSize at 2, so the guard
+    // in $transformTextNode rejects the paragraph without the merge masking the check.
     editor.update(
       () => {
         const root = $getRoot();
         root.clear();
         const paragraph = $createParagraphNode();
-        paragraph.append($createTextNode("# "), $createTextNode("Title"));
+        paragraph.append($createLineBreakNode(), $createTextNode("# Title"));
         root.append(paragraph);
       },
       { discrete: true },
     );
 
     let isParagraph = false;
+    let childCount = 0;
     let text = "";
     editor.getEditorState().read(() => {
       const node = $getRoot().getFirstChild();
       isParagraph = node?.getType() === "paragraph";
+      childCount = node?.getChildrenSize() ?? 0;
       text = node?.getTextContent() ?? "";
     });
 
     expect(isParagraph).toBe(true);
-    expect(text).toBe("# Title");
+    expect(childCount).toBe(2);
+    expect(text).toBe("\n# Title");
   });
 
   test("a heading already converted from a shortcut does not re-trigger on further edits", () => {

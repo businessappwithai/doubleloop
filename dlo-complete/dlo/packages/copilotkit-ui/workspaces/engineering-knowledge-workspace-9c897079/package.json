@@ -11,7 +11,7 @@
     "dev": "vite dev --port 3000 --config app.config.ts",
     "build": "vite build --config app.config.ts",
     "start": "vite preview --port 3000 --config app.config.ts",
-    "collab": "node --experimental-strip-types src/collab-server/main.ts",
+    "collab": "node --experimental-strip-types src/server/collab-server.ts",
     "typecheck": "tsc --noEmit",
     "relay": "relay-compiler",
     "schema:emit": "node scripts/schema-emit.mjs",

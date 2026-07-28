@@ -7,23 +7,37 @@
 // so alphabet-index order and byte order coincide and every comparison below can reason purely in
 // terms of alphabet indices.
 //
-// Three shapes, two strategies:
+// Four shapes, three strategies:
 //  - append (`b === null`, no upper bound — "add to the end"): bump the key's last character
 //    toward 'z', leaving headroom for the *next* append, and only grow the string by one
 //    character once the last position is already 'z'. This keeps N sequential appends at
-//    roughly O(log N) characters instead of O(N) — see `bumpLast`.
-//  - first key / prepend / insert-between (`a`, `b`, or both `null`): all three reduce to one
-//    routine, `rawBetween`, by treating a missing lower bound as `""` (the empty string is
-//    always "exhausted" from position 0, which is exactly what "no lower bound" means under
-//    lexicographic comparison) and a missing upper bound as the single-character MID key (any
-//    key at all is a valid answer when nothing bounds either side).
+//    roughly O(log N) characters instead of O(N) — see `bumpLast`/`appendKey`.
+//  - prepend (`a === null`, `b` non-null — "add to the front"): the mirror of append, but NOT a
+//    mirror-image implementation of `bumpLast`, because byte-ordered strings are asymmetric.
+//    Extending a string by appending a character always sorts it *later* (a proper prefix is
+//    always less than any extension of itself) — that asymmetry is exactly what lets `bumpLast`
+//    grow forever by appending once it hits 'z'. Going the other direction, appending can never
+//    produce something *earlier*, so shrinking the key's leading character until it hits '0' the
+//    way `bumpLast` shrinks toward 'z' would hit the alphabet floor after only ~6 halvings
+//    (`log2(62)`) and `rawBetween` would report `sortKeySpaceExhausted` far too soon for a
+//    realistic "drag to the very top of the list, repeatedly" workload. `bumpFirst`/`prependKey`
+//    solve this the way real fractional-indexing schemes do: once the leading character can no
+//    longer be lowered in place, the leading `'0'` is echoed unchanged (an unmodified prefix
+//    never changes what a comparison decides) and the same bump is retried one position deeper —
+//    the same "grow precision instead of colliding" idea `rawBetween`'s own loop uses when two
+//    bounds tie. That keeps N sequential prepends at roughly O(log N) characters too, matching
+//    append's own long-run behaviour.
+//  - first key / insert-between (`a` and `b` both non-null, or both `null`): `rawBetween` — a
+//    missing lower bound reduces to `""` and a missing upper bound to the single-character MID
+//    key (any key at all is a valid answer when nothing bounds either side).
 //
 // The one case no key can satisfy: nothing sorts strictly below the alphabet's own minimum
 // character ('0'), so a request for a key between `a` and a `b` that — after stripping redundant
-// trailing minimum characters — equals or precedes `a` is genuinely unsatisfiable. `rawBetween`
-// throws `ValidationError('hierarchy.sortKeySpaceExhausted')` rather than colliding or silently
-// returning an out-of-range key; see its own comment for why the stripping step is both necessary
-// and safe.
+// trailing minimum characters — equals or precedes `a` is genuinely unsatisfiable (and, for
+// `bumpFirst`, a key that is *already* every '0' character has nowhere left to recurse into).
+// Both throw `ValidationError('hierarchy.sortKeySpaceExhausted')` rather than colliding or
+// silently returning an out-of-range key; see `rawBetween`'s own comment for why its stripping
+// step is both necessary and safe.
 import { ValidationError } from "../../core/errors";
 
 export const SORT_KEY_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
@@ -73,9 +87,41 @@ function appendKey(lower: string): string {
 }
 
 /**
- * Core midpoint routine for "first key", "prepend" and "insert between" — all of which are
- * `rawBetween` with `a` defaulted to `""` (no lower bound). Walks `a` and `b` position by
- * position, carrying forward whichever side is still real (tied) at each position, until a
+ * Bumps `key`'s leading character roughly halfway toward the alphabet floor, so the next prepend
+ * still has room before it needs to recurse deeper — the mirror of {@link bumpLast}. When `key`
+ * has more than one character, the untouched remainder is kept as-is (it already provides some
+ * headroom of its own); when `key` is a single character, {@link MID_CHAR} is appended as fresh
+ * headroom for whichever position the *next* prepend needs to touch. When the leading character
+ * is already `'0'` (no room to lower it in place), that `'0'` is echoed unchanged — a leading
+ * character that does not change cannot change what a comparison decides — and the same bump is
+ * retried against the rest of `key`; a single `'0'` with nothing left to recurse into is the
+ * genuine floor and throws.
+ */
+function bumpFirst(key: string): string {
+  const firstIndex = indexOf(key[0]!);
+  if (firstIndex <= 0) {
+    if (key.length <= 1) {
+      throw new ValidationError("hierarchy.sortKeySpaceExhausted", { details: { key } });
+    }
+    return key[0] + bumpFirst(key.slice(1));
+  }
+  const step = Math.max(1, Math.ceil(firstIndex / 2));
+  const bumped = Math.max(firstIndex - step, 0);
+  const rest = key.length > 1 ? key.slice(1) : MID_CHAR;
+  return SORT_KEY_ALPHABET[bumped] + rest;
+}
+
+function prependKey(upper: string): string {
+  const bumped = bumpFirst(upper);
+  if (bumped.length > MAX_SORT_KEY_LENGTH) {
+    throw new ValidationError("hierarchy.sortKeySpaceExhausted", { details: { upper } });
+  }
+  return bumped;
+}
+
+/**
+ * Core midpoint routine for "insert between" (both bounds non-null). Walks `a` and `b` position
+ * by position, carrying forward whichever side is still real (tied) at each position, until a
  * position has room for a strict midpoint character; that position's result is returned
  * immediately.
  *
@@ -133,5 +179,8 @@ export function keyBetween(a: string | null, b: string | null): string {
   if (b === null) {
     return appendKey(a!);
   }
-  return rawBetween(a ?? "", b);
+  if (a === null) {
+    return prependKey(b);
+  }
+  return rawBetween(a, b);
 }

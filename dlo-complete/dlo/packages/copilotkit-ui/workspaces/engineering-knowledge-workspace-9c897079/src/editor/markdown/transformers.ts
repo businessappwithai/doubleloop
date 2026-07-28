@@ -29,10 +29,19 @@ export const CODE_BLOCK_TRANSFORMER: MultilineElementTransformer = {
   },
   regExpStart: CODE_FENCE_START,
   regExpEnd: { optional: true, regExp: CODE_FENCE_END },
-  replace: (rootNode, _children, startMatch, _endMatch, linesInBetween) => {
+  replace: (rootNode, _children, startMatch, endMatch, linesInBetween) => {
     const rawLanguage = startMatch[1];
     const language = rawLanguage && rawLanguage.length > 0 ? rawLanguage : "plaintext";
-    const code = (linesInBetween ?? []).join("\n");
+    // `@lexical/markdown`'s multiline importer always includes the opening line's post-match
+    // remainder as the first element of `linesInBetween`, and (only when a closing fence was
+    // actually matched) the closing line's pre-match remainder as the last element. Both
+    // regexes above are anchored to the full line (`^...$`), so those remainders are always
+    // "" here — drop the leading one unconditionally, and the trailing one only when `endMatch`
+    // is set. For an unterminated fence (`regExpEnd` is optional and never matched), the last
+    // element is real code content and must be kept, not discarded as a fake remainder.
+    const lines = linesInBetween ?? [];
+    const codeLines = endMatch ? lines.slice(1, -1) : lines.slice(1);
+    const code = codeLines.join("\n");
     rootNode.append($createCodeBlockNode(code, language));
   },
   type: "multiline-element",
