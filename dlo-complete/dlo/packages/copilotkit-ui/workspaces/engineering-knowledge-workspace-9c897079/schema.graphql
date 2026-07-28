@@ -1,0 +1,450 @@
+# --- /home/user/doubleloop/dlo-complete/dlo/packages/copilotkit-ui/workspaces/engineering-knowledge-workspace-9c897079/src/graphql/schema.root.graphql ---
+
+# src/graphql/schema.root.graphql — the root SDL document (Architecture.md "GraphQL conventions
+# (Relay, mandated)"; Implementation.md m7). scripts/emit-schema.ts concatenates this file with
+# every src/modules/**/*.graphql fragment into schema.graphql. `Query` and `Mutation` are opened
+# here with one field each so every module fragment can add its own fields via `extend type Query`
+# / `extend type Mutation` instead of re-declaring the type (GraphQL SDL forbids two non-extension
+# definitions of the same type name in one document — that collision is exactly what
+# emit-schema.ts's duplicate-type-definition check exists to catch). `Mutation._empty` is a
+# placeholder so the type has at least one field before any module extends it; it is never
+# resolved to and carries no meaning once real mutations exist.
+
+"""Relay Global Object Identification. `id` is the opaque base64 encoding of `"TypeName:localId"`."""
+interface Node {
+  id: ID!
+}
+
+"""Relay Connections cursor-pagination metadata (Relay Cursor Connections spec)."""
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+"""OKF Concept provenance/trust classification (mirrors the domain `TrustLevel` union)."""
+enum TrustLevel {
+  UNVERIFIED
+  MACHINE_CONFIRMED
+  HUMAN_REVIEWED
+}
+
+"""OKF Concept publication state (mirrors the domain `Lifecycle` union)."""
+enum Lifecycle {
+  DRAFT
+  ACTIVE
+  DEPRECATED
+  ARCHIVED
+}
+
+"""An ISO-8601 instant, serialized as a string (e.g. `2026-07-26T00:00:00.000Z`)."""
+scalar DateTime
+
+"""An arbitrary JSON value — used for OKF frontmatter's `extra` bag and block payload fields."""
+scalar JSON
+
+type Query {
+  node(id: ID!): Node
+}
+
+type Mutation {
+  _empty: Boolean
+}
+
+# --- bundles/bundle-schema.graphql ---
+
+# src/modules/bundles/bundle-schema.graphql — SDL fragment for the bundles module
+# (Architecture.md "GraphQL conventions (Relay, mandated)"; Implementation.md m9). `Query` and
+# `Mutation` are opened once in schema.root.graphql; this fragment only `extend`s them —
+# scripts/emit-schema.ts throws `schema.duplicateTypeDefinition` if two documents each *define*
+# the same type name, so re-declaring `type Query { ... }` here instead of `extend`-ing it would
+# fail the merge. `Node`, `PageInfo`, `TrustLevel` and `DateTime` are likewise declared once in
+# the root document and reused here without redefinition.
+
+"""A self-contained collection of Concepts and the unit of Git synchronisation (Database.md `bundles`)."""
+type Bundle implements Node {
+  id: ID!
+  workspaceId: String!
+  slug: String!
+  title: String!
+  description: String!
+  okfVersion: String!
+  defaultTrust: TrustLevel!
+  conceptCount: Int!
+  version: Int!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type BundleEdge {
+  node: Bundle!
+  cursor: String!
+}
+
+type BundleConnection {
+  edges: [BundleEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+extend type Query {
+  bundle(id: ID!): Bundle
+  bundles(workspaceId: String!, first: Int, after: String, last: Int, before: String): BundleConnection!
+}
+
+input CreateBundleInput {
+  workspaceId: String!
+  slug: String!
+  title: String!
+  description: String
+  okfVersion: String
+  defaultTrust: TrustLevel
+}
+
+type CreateBundlePayload {
+  bundle: Bundle!
+}
+
+input RenameBundleInput {
+  id: ID!
+  expectedVersion: Int!
+  title: String!
+}
+
+type RenameBundlePayload {
+  bundle: Bundle!
+}
+
+input ArchiveBundleInput {
+  id: ID!
+  expectedVersion: Int!
+}
+
+type ArchiveBundlePayload {
+  bundle: Bundle!
+}
+
+extend type Mutation {
+  createBundle(input: CreateBundleInput!): CreateBundlePayload!
+  renameBundle(input: RenameBundleInput!): RenameBundlePayload!
+  archiveBundle(input: ArchiveBundleInput!): ArchiveBundlePayload!
+}
+
+# --- collab/collab-schema.graphql ---
+
+# src/modules/collab/collab-schema.graphql — SDL fragment for the collaboration module
+# (Implementation.md m13). `PresenceEntry` is not a `Node`: it is an ephemeral, in-memory
+# projection of who is currently in a room, never a persisted entity, so it carries no global id.
+
+"""A live collaborator currently present in a concept's collaboration room."""
+type PresenceEntry {
+  actorId: ID!
+  displayName: String!
+  color: String!
+  lastSeenAt: DateTime!
+}
+
+extend type Query {
+  """Live presence for a concept's collaboration room. `[]` when nobody is currently editing."""
+  presence(conceptId: ID!): [PresenceEntry!]!
+}
+
+# --- concepts/concept-schema.graphql ---
+
+# src/modules/concepts/concept-schema.graphql — SDL fragment for the concepts module
+# (Architecture.md "GraphQL conventions (Relay, mandated)"; Implementation.md m10). `Query` and
+# `Mutation` are opened once in schema.root.graphql; this fragment only `extend`s them —
+# scripts/emit-schema.ts throws `schema.duplicateTypeDefinition` if two documents each *define*
+# the same type name. `Node`, `PageInfo` and `DateTime` are declared once in the root document.
+# `hierarchy-schema.graphql` further `extend`s `Concept` with `children`/`ancestors` — that is a
+# legal SDL extension of a type this document defines, not a redefinition.
+
+"""
+A Concept (Database.md `concepts`): one hierarchical node, one Markdown document, specialised for
+Google Cloud's Open Knowledge Format. `path` is the materialised slash-separated ancestor slug
+chain; `sortKey` is the fractional-index position among its siblings (`hierarchy/sort-key.ts`).
+"""
+type Concept implements Node {
+  id: ID!
+  bundleId: ID!
+  parentId: ID
+  slug: String!
+  path: String!
+  title: String!
+  sortKey: String!
+  depth: Int!
+  isIndex: Boolean!
+  childCount: Int!
+  version: Int!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type ConceptEdge {
+  node: Concept!
+  cursor: String!
+}
+
+type ConceptConnection {
+  edges: [ConceptEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+extend type Query {
+  concept(bundleId: ID!, id: ID!): Concept
+  conceptByPath(bundleId: ID!, path: String!): Concept
+  concepts(bundleId: ID!, first: Int, after: String, last: Int, before: String): ConceptConnection!
+}
+
+input CreateConceptInput {
+  bundleId: ID!
+  parentId: ID
+  slug: String!
+  title: String!
+  isIndex: Boolean
+}
+
+type CreateConceptPayload {
+  concept: Concept!
+}
+
+input UpdateConceptMetadataInput {
+  bundleId: ID!
+  id: ID!
+  expectedVersion: Int!
+  title: String
+  isIndex: Boolean
+}
+
+type UpdateConceptMetadataPayload {
+  concept: Concept!
+}
+
+input ArchiveConceptInput {
+  bundleId: ID!
+  id: ID!
+  expectedVersion: Int!
+}
+
+type ArchiveConceptPayload {
+  concept: Concept!
+}
+
+extend type Mutation {
+  createConcept(input: CreateConceptInput!): CreateConceptPayload!
+  updateConceptMetadata(input: UpdateConceptMetadataInput!): UpdateConceptMetadataPayload!
+  archiveConcept(input: ArchiveConceptInput!): ArchiveConceptPayload!
+}
+
+# --- documents/document-schema.graphql ---
+
+# src/modules/documents/document-schema.graphql — the documents module's SDL fragment
+# (Implementation.md m11). `ConceptDocument` does not `implement Node`: it is 1:1 with a Concept
+# (Database.md `concept_documents.concept_id PRIMARY KEY REFERENCES concepts (id)`) and is only
+# ever reached as a field off `Concept`, never fetched directly via `node(id:)` — so it has no
+# entry in `src/core/global-id.ts`'s `NODE_TYPES`. `scripts/emit-schema.ts` concatenates this file
+# with every other module fragment and the root document into `schema.graphql`.
+
+"""
+The fluid half of a Concept (Database.md `concept_documents`): the Lexical block payload, the
+Markdown projection used for full-text search and Git export, and the state needed to resume Yjs
+CRDT collaboration.
+"""
+type ConceptDocument {
+  conceptId: ID!
+  """Serialized block tree — validated against this module's block schema on every read."""
+  contentBlocks: JSON!
+  bodyMarkdown: String!
+  """Hex-64 SHA-256 digest of `bodyMarkdown`."""
+  bodySha256: String!
+  blockCount: Int!
+  wordCount: Int!
+  """Base64-encoded Yjs state vector; a reconnecting client sends this to request a diff."""
+  crdtStateVectorB64: String!
+  version: Int!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+input SaveDocumentInput {
+  conceptId: ID!
+  title: String!
+  contentBlocks: JSON!
+  expectedVersion: Int!
+}
+
+input ApplyCrdtUpdateInput {
+  conceptId: ID!
+  title: String!
+  """Base64-encoded Yjs binary update."""
+  updateB64: String!
+  expectedVersion: Int!
+}
+
+extend type Query {
+  conceptDocument(conceptId: ID!): ConceptDocument
+}
+
+extend type Mutation {
+  """The non-CRDT write path: replaces `contentBlocks` wholesale under optimistic concurrency."""
+  saveDocument(input: SaveDocumentInput!): ConceptDocument!
+  """Merges a Yjs binary update into the document's CRDT state and returns the merged result."""
+  applyCrdtUpdate(input: ApplyCrdtUpdateInput!): ConceptDocument!
+}
+
+# --- git-sync/git-sync-schema.graphql ---
+
+# src/modules/git-sync/git-sync-schema.graphql — SDL fragment for the git-sync module
+# (Implementation.md m14). `Query` and `Mutation` are opened once in schema.root.graphql; this
+# fragment only `extend`s them. `GitSyncRun` does not `implement Node`: it is never fetched
+# directly via `node(id:)`, only listed per-bundle or returned from `triggerGitSync`, so it has no
+# entry in `src/core/global-id.ts`'s `NODE_TYPES` — `id`/`bundleId`/`remoteId` are plain opaque
+# strings, the same convention `ConceptDocument.conceptId` uses in the documents module fragment.
+
+"""Database.md `git_sync_status`."""
+enum GitSyncRunStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+}
+
+"""Database.md `git_sync_trigger`."""
+enum GitSyncTrigger {
+  SCHEDULE
+  MANUAL
+  STARTUP
+}
+
+"""One execution of the Git-sync worker (Database.md `git_sync_runs`)."""
+type GitSyncRun {
+  id: ID!
+  bundleId: ID!
+  remoteId: ID!
+  status: GitSyncRunStatus!
+  trigger: GitSyncTrigger!
+  startedAt: DateTime!
+  finishedAt: DateTime
+  """Hex-40 commit SHA. `null` unless `status` is `SUCCEEDED`."""
+  commitSha: String
+  filesWritten: Int!
+  filesDeleted: Int!
+  filesUnchanged: Int!
+  """The `AppError`-style machine-readable code. `null` unless `status` is `FAILED`."""
+  errorCode: String
+  """Redacted failure message. `null` unless `status` is `FAILED`."""
+  errorMessage: String
+}
+
+type GitSyncRunEdge {
+  node: GitSyncRun!
+  cursor: String!
+}
+
+type GitSyncRunConnection {
+  edges: [GitSyncRunEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+extend type Query {
+  """Run history for a bundle, most recent first."""
+  gitSyncRuns(bundleId: ID!, first: Int, after: String, last: Int, before: String): GitSyncRunConnection!
+}
+
+input TriggerGitSyncInput {
+  bundleId: ID!
+}
+
+type TriggerGitSyncPayload {
+  run: GitSyncRun!
+}
+
+extend type Mutation {
+  """Runs the full export → commit → push cycle for a bundle on demand (`trigger: MANUAL`)."""
+  triggerGitSync(input: TriggerGitSyncInput!): TriggerGitSyncPayload!
+}
+
+# --- hierarchy/hierarchy-schema.graphql ---
+
+# src/modules/hierarchy/hierarchy-schema.graphql — SDL fragment for the hierarchy module
+# (Implementation.md m10). `extend type Concept` legally adds fields to the `Concept` type
+# `concept-schema.graphql` defines — scripts/emit-schema.ts's duplicate-type check only rejects a
+# second non-extension *definition* of a type name, not an extension of one. `children`/`ancestors`
+# never take a `bundleId` argument: the resolved parent `Concept` already carries its own
+# `bundleId`, so the field resolvers read it off `source` instead of asking the client to repeat it.
+
+extend type Concept {
+  """Live children of this concept, sort-key ordered — the lazily-paginated sidebar."""
+  children(first: Int, after: String, last: Int, before: String): ConceptConnection!
+  """Root-first ancestor chain of this concept, excluding the concept itself (the breadcrumb)."""
+  ancestors: [Concept!]!
+}
+
+input MoveConceptInput {
+  bundleId: ID!
+  id: ID!
+  expectedVersion: Int!
+  """Omit or pass `null` to move to the bundle root; an id reparents under that concept."""
+  newParentId: ID
+  """Omit to append as the last child; `null` to prepend as the first child; an id to insert after that sibling."""
+  afterId: ID
+}
+
+type MoveConceptPayload {
+  concept: Concept!
+}
+
+extend type Mutation {
+  moveConcept(input: MoveConceptInput!): MoveConceptPayload!
+}
+
+# --- search/search-schema.graphql ---
+
+# src/modules/search/search-schema.graphql — SDL fragment for module m12 (Implementation.md
+# m12). `SearchHit` is a projection, not a `Node`: it is never fetched via `node(id)`, only ever
+# returned inside a `SearchHitConnection`. Its `id` field is still a Relay global id — the
+# underlying Concept's — so a client can navigate straight to the concept a hit came from.
+
+"""One ranked or containment-matched result within a bundle's search."""
+type SearchHit {
+  "The underlying Concept's Relay global id."
+  id: ID!
+  title: String!
+  path: String!
+  "Full-text relevance rank; 0 for a pure containment match with no text query."
+  rank: Float!
+  "A truncated excerpt around the first matched term, with matches wrapped in **bold**."
+  snippet: String!
+}
+
+type SearchHitEdge {
+  node: SearchHit!
+  cursor: String!
+}
+
+type SearchHitConnection {
+  edges: [SearchHitEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+extend type Query {
+  """
+  Searches a bundle's concepts. At least one of `text` or `containment` must be supplied —
+  omitting both raises a `search.emptyQuery` error. `containment` is a JSONB fragment matched
+  with `@>` against each concept's block payload.
+  """
+  search(
+    bundleId: ID!
+    text: String
+    containment: JSON
+    first: Int
+    after: String
+    last: Int
+    before: String
+  ): SearchHitConnection!
+}
