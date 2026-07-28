@@ -664,7 +664,7 @@ async function runOneModule(pipelineId: string, mod: PlanModule): Promise<boolea
       // run: three simultaneous exits with 0 tokens, 0 duration and 0 cost.
       if (isTransientBuilderError(buildErr.message ?? "") && transientRetries < MAX_TRANSIENT_RETRIES) {
         transientRetries++;
-        const waitMs = 30_000 * transientRetries;
+        const waitMs = Math.min(TRANSIENT_BACKOFF_STEP_MS * transientRetries, TRANSIENT_BACKOFF_CAP_MS);
         appendLog(
           pipelineId,
           `[Module] "${label}" — the model call failed before doing any work (transient, ${transientRetries}/${MAX_TRANSIENT_RETRIES}); waiting ${waitMs / 1000}s and retrying without using an attempt.`
@@ -755,8 +755,19 @@ async function updateModuleStatus(
 }
 
 const FLEET_MAX_RETRIES = 3;
-/** Backoff retries for a model call that never ran; these don't consume attempts. */
-const MAX_TRANSIENT_RETRIES = 5;
+/**
+ * Backoff retries for a model call that never ran; these don't consume attempts.
+ *
+ * Sized for a sustained outage, not a blip. API capacity exhaustion repeatedly
+ * took out four concurrent modules at once in real runs and lasted well past a
+ * few minutes; at 5 retries the fleet gave up after ~7 minutes and marked
+ * healthy modules FAILED. Waiting costs the pipeline nothing but time, whereas
+ * a wrongly-FAILED module blocks everything downstream of it — so the budget is
+ * generous and the backoff is capped rather than unbounded.
+ */
+const MAX_TRANSIENT_RETRIES = 12;
+const TRANSIENT_BACKOFF_STEP_MS = 30_000;
+const TRANSIENT_BACKOFF_CAP_MS = 5 * 60_000;
 
 /**
  * Did the model call fail before doing any work?
