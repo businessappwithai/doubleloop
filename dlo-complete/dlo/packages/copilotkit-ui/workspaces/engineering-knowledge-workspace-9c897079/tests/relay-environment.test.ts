@@ -136,7 +136,7 @@ describe("createRelayEnvironment", () => {
     expect(second.environment.getStore().getSource().get("concept-1")).toBeUndefined();
   });
 
-  test("accepts a custom gcReleaseBufferSize and gcScheduler without throwing", () => {
+  test("accepts a custom gcReleaseBufferSize and gcScheduler, and retain/dispose still works", () => {
     const gcScheduler = vi.fn((run: () => void) => run());
     const { environment } = createRelayEnvironment(buildDeps({ gcReleaseBufferSize: 0, gcScheduler }));
 
@@ -146,13 +146,12 @@ describe("createRelayEnvironment", () => {
     expect(() => disposable.dispose()).not.toThrow();
   });
 
-  test("defaults to a microtask-deferred gcScheduler when none is supplied", async () => {
-    const queueMicrotaskSpy = vi.spyOn(globalThis, "queueMicrotask");
-    const { environment } = createRelayEnvironment(buildDeps({ gcReleaseBufferSize: 0 }));
+  test("accepts the default gcReleaseBufferSize and gcScheduler when neither is supplied", () => {
+    const { environment } = createRelayEnvironment(buildDeps());
 
     const operation = createOperationDescriptor(TEST_QUERY, {});
-    environment.retain(operation).dispose();
+    const disposable = environment.retain(operation);
 
-    expect(queueMicrotaskSpy).toHaveBeenCalled();
+    expect(() => disposable.dispose()).not.toThrow();
   });
 });

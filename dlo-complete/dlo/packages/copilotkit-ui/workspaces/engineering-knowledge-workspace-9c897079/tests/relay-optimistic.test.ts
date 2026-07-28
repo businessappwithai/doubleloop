@@ -368,8 +368,13 @@ describe("withOptimistic — no edge edit", () => {
           nodeTypeName: "Concept",
           nodeDataID: "concept-order",
         },
-        optimisticUpdater: () => {
-          order.push(edgeNodeIDs(environment, connectionID).length === 1 ? "edge-already-inserted" : "edge-missing");
+        optimisticUpdater: (store) => {
+          // Read through the same RecordSourceProxy the composed updater used, rather than
+          // environment.getStore().getSource(): the batch is still in progress at this point, and
+          // only the in-flight proxy is guaranteed to reflect insertEdge's writes so far.
+          const connection = store.get(connectionID);
+          const edges = connection?.getLinkedRecords("edges") ?? [];
+          order.push(edges.length === 1 ? "edge-already-inserted" : "edge-missing");
         },
         onCompleted: () => resolve(),
         onError: () => resolve(),

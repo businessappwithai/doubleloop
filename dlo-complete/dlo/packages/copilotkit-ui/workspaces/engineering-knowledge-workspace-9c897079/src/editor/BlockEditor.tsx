@@ -92,7 +92,7 @@ export function BlockEditor({
       createEditorInitialConfig(namespace, {
         ...(editable !== undefined ? { editable } : {}),
         ...(initialMarkdown !== undefined
-          ? { editorState: () => $populateFromMarkdown(initialMarkdown) }
+          ? { editorState: () => markdownToEditorState(initialMarkdown) }
           : {}),
       }),
     // Read once on mount, matching Lexical's InitialConfigType contract — see module header.

@@ -1,14 +1,7 @@
-<<<<<<< HEAD
--- sql/migrations/003_bundles_and_concepts.sql
--- Transcribed verbatim from Database.md's "## DDL" block, section "003_bundles_and_concepts.sql".
--- bundles (OKF Knowledge Bundle) and concepts (OKF Concept hierarchy), including the composite
--- FK that pins a child to its parent's bundle, the cycle-rejection constraint trigger, and the
--- denormalised child_count/concept_count maintenance trigger.
-=======
--- sql/migrations/003_bundles_and_concepts.sql — module m6. `bundles`, `concepts`, the cycle-
--- rejection constraint trigger, and the denormalised child/concept-count maintenance trigger.
--- Transcribed verbatim from Database.md's "## DDL" block.
->>>>>>> origin/claude/engineering-knowledge-workspace-uknsck
+-- sql/migrations/003_bundles_and_concepts.sql — module m6. bundles (OKF Knowledge Bundle) and
+-- concepts (OKF Concept hierarchy), including the composite FK that pins a child to its parent's
+-- bundle, the cycle-rejection constraint trigger, and the denormalised child_count/concept_count
+-- maintenance trigger. Transcribed verbatim from Database.md's "## DDL" block.
 
 CREATE TABLE IF NOT EXISTS bundles (
   id             uuid             PRIMARY KEY DEFAULT gen_random_uuid(),

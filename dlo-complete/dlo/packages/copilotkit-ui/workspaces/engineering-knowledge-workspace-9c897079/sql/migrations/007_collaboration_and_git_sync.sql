@@ -1,14 +1,7 @@
-<<<<<<< HEAD
--- sql/migrations/007_collaboration_and_git_sync.sql
--- Transcribed verbatim from Database.md's "## DDL" block, section "007_collaboration_and_git_sync.sql".
--- collab_sessions (Yjs awareness/presence), git_remotes (per-bundle Git target), git_sync_runs
--- (one row per worker execution), and git_sync_files (per-file outcome of a run).
-=======
--- sql/migrations/007_collaboration_and_git_sync.sql — module m6. `collab_sessions` (Yjs
--- awareness/presence), `git_remotes` (per-bundle sync target), `git_sync_runs` (one row per worker
--- execution) and `git_sync_files` (per-file outcome of a run). Transcribed verbatim from
+-- sql/migrations/007_collaboration_and_git_sync.sql — module m6. collab_sessions (Yjs
+-- awareness/presence), git_remotes (per-bundle Git target), git_sync_runs (one row per worker
+-- execution), and git_sync_files (per-file outcome of a run). Transcribed verbatim from
 -- Database.md's "## DDL" block.
->>>>>>> origin/claude/engineering-knowledge-workspace-uknsck
 
 CREATE TABLE IF NOT EXISTS collab_sessions (
   id               uuid        PRIMARY KEY DEFAULT gen_random_uuid(),

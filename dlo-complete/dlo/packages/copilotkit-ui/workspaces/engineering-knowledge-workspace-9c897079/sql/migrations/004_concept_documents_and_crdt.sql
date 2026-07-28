@@ -1,13 +1,6 @@
-<<<<<<< HEAD
--- sql/migrations/004_concept_documents_and_crdt.sql
--- Transcribed verbatim from Database.md's "## DDL" block, section "004_concept_documents_and_crdt.sql".
--- concept_documents (1:1 with concepts; JSONB Lexical block payload + bytea Yjs state, generated
--- body_tsv) and yjs_updates (append-only CRDT update log).
-=======
--- sql/migrations/004_concept_documents_and_crdt.sql — module m6. `concept_documents` (the CRDT
--- state + Lexical block payload, 1:1 with `concepts`) and `yjs_updates` (the append-only CRDT
--- update log). Transcribed verbatim from Database.md's "## DDL" block.
->>>>>>> origin/claude/engineering-knowledge-workspace-uknsck
+-- sql/migrations/004_concept_documents_and_crdt.sql — module m6. concept_documents (1:1 with
+-- concepts; JSONB Lexical block payload + bytea Yjs state, generated body_tsv) and yjs_updates
+-- (append-only CRDT update log). Transcribed verbatim from Database.md's "## DDL" block.
 
 CREATE TABLE IF NOT EXISTS concept_documents (
   concept_id         uuid        PRIMARY KEY REFERENCES concepts (id) ON DELETE CASCADE,

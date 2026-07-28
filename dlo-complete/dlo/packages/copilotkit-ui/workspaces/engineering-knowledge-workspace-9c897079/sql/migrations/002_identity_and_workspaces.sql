@@ -1,12 +1,6 @@
-<<<<<<< HEAD
--- sql/migrations/002_identity_and_workspaces.sql
--- Transcribed verbatim from Database.md's "## DDL" block, section "002_identity_and_workspaces.sql".
--- users (actors; no credential columns), workspaces (top-level tenant container), and
--- workspace_members (membership + role, exactly one owner per workspace).
-=======
--- sql/migrations/002_identity_and_workspaces.sql — module m6. `users`, `workspaces`, and
--- `workspace_members`. Transcribed verbatim from Database.md's "## DDL" block.
->>>>>>> origin/claude/engineering-knowledge-workspace-uknsck
+-- sql/migrations/002_identity_and_workspaces.sql — module m6. users (actors; no credential
+-- columns), workspaces (top-level tenant container), and workspace_members (membership + role,
+-- exactly one owner per workspace). Transcribed verbatim from Database.md's "## DDL" block.
 
 CREATE TABLE IF NOT EXISTS users (
   id            uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
