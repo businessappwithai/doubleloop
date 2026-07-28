@@ -57,9 +57,16 @@ async function mountToolbar(): Promise<{ editor: LexicalEditor; result: RenderRe
   return { editor: captured as LexicalEditor, result };
 }
 
-/** Runs `run` inside a discrete update, so its effect (and the toolbar's re-render) is committed synchronously. */
+/**
+ * Runs `run` inside a discrete update, so its effect (and the toolbar's re-render) is committed
+ * synchronously. Wrapped in `act()`: a discrete update commits synchronously, which drives
+ * `RichTextPlugin`'s placeholder-visibility `setState` synchronously too (see
+ * `editor-block-editor.test.tsx`'s header), and that must happen inside `act()`.
+ */
 function updateSync(editor: LexicalEditor, run: () => void): void {
-  editor.update(run, { discrete: true });
+  act(() => {
+    editor.update(run, { discrete: true });
+  });
 }
 
 function readState<T>(editor: LexicalEditor, run: () => T): T {
