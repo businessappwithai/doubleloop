@@ -1,7 +1,13 @@
+<<<<<<< HEAD
 -- sql/migrations/005_frontmatter_links_revisions.sql
 -- Transcribed verbatim from Database.md's "## DDL" block, section "005_frontmatter_links_revisions.sql".
 -- concept_frontmatter (1:1 OKF YAML frontmatter), concept_links (resolved cross-links), and
 -- concept_revisions (immutable snapshot history).
+=======
+-- sql/migrations/005_frontmatter_links_revisions.sql — module m6. `concept_frontmatter` (OKF YAML
+-- metadata, 1:1 with `concepts`), `concept_links` (resolved cross-links), and `concept_revisions`
+-- (immutable snapshot history). Transcribed verbatim from Database.md's "## DDL" block.
+>>>>>>> origin/claude/engineering-knowledge-workspace-uknsck
 
 CREATE TABLE IF NOT EXISTS concept_frontmatter (
   concept_id   uuid            PRIMARY KEY REFERENCES concepts (id) ON DELETE CASCADE,

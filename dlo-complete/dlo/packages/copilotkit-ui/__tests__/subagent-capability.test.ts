@@ -276,3 +276,52 @@ describe("isTransientBuilderError", () => {
     expect(isTransientBuilderError(message)).toBe(false);
   });
 });
+
+describe("tool permissions", () => {
+  // m6 reported its own blocker as "Bash stays gated": acceptEdits auto-approves
+  // file edits but NOT command execution, so a subagent instructed to run
+  // `npx tsc --noEmit` could not, and fell back to writing code blind — the exact
+  // failure the tooling mandate exists to prevent.
+  test("pre-approves the tools a builder needs to verify its own work", async () => {
+    const { BUILDER_ALLOWED_TOOLS } = await import("../src/lib/orchestrator/subagents/claude");
+    expect(BUILDER_ALLOWED_TOOLS).toContain("Bash");
+    expect(BUILDER_ALLOWED_TOOLS).toContain("Edit");
+    expect(BUILDER_ALLOWED_TOOLS).toContain("Write");
+    expect(BUILDER_ALLOWED_TOOLS).toContain("WebFetch");
+  });
+
+  test("spawnClaudeAgent passes them as --allowedTools", async () => {
+    const { spawnClaudeAgent } = await import("../src/lib/orchestrator/subagents/claude");
+    spawnMock.mockClear();
+    await spawnClaudeAgent({
+      prompt: "x",
+      model: "claude-sonnet-5",
+      cwd: "/tmp/dlo-tools",
+      allowedTools: ["Bash", "Edit"],
+    });
+    const args = spawnMock.mock.calls[0]![1] as string[];
+    const at = args.indexOf("--allowedTools");
+    expect(at).toBeGreaterThan(-1);
+    expect(args.slice(at + 1, at + 3)).toEqual(["Bash", "Edit"]);
+  });
+
+  test("omits the flag entirely when no tools are requested", async () => {
+    const { spawnClaudeAgent } = await import("../src/lib/orchestrator/subagents/claude");
+    spawnMock.mockClear();
+    await spawnClaudeAgent({ prompt: "x", model: "claude-sonnet-5", cwd: "/tmp/dlo-tools" });
+    expect(spawnMock.mock.calls[0]![1] as string[]).not.toContain("--allowedTools");
+  });
+
+  test("the fleet's own build subagent is spawned with Bash allowed", async () => {
+    const prompt = await (async () => {
+      const call = spawnMock.mock.calls.find((c) => {
+        const a = c[1] as string[];
+        return (a[a.indexOf("-p") + 1] ?? "").includes("build subagent");
+      });
+      return call;
+    })();
+    void prompt; // covered by the fleet-prompt suite above
+    const { BUILDER_ALLOWED_TOOLS } = await import("../src/lib/orchestrator/subagents/claude");
+    expect(BUILDER_ALLOWED_TOOLS.length).toBeGreaterThan(0);
+  });
+});

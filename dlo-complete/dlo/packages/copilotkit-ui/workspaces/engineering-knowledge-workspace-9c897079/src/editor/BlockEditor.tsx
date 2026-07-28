@@ -22,7 +22,7 @@ import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import type { LexicalEditor } from "lexical";
 import { createEditorInitialConfig } from "./config/editor-config";
 import { registerMarkdownShortcuts } from "./transforms/markdown-shortcuts";
-import { $populateFromMarkdown, editorStateToMarkdown } from "./markdown/serialize";
+import { editorStateToMarkdown, markdownToEditorState } from "./markdown/serialize";
 import { Toolbar } from "./Toolbar";
 
 const styles = stylex.create({

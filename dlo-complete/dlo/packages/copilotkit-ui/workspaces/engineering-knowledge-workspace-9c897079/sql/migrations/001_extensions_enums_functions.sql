@@ -1,9 +1,20 @@
+<<<<<<< HEAD
 -- sql/migrations/001_extensions_enums_functions.sql
 -- Transcribed verbatim from Database.md's "## DDL" block, section "001_extensions_enums_functions.sql".
 -- Extensions, the okf_english text-search configuration, every enum type, the shared
 -- set_updated_at() trigger function, and the schema_migrations ledger table itself.
 -- Every statement is idempotent (IF NOT EXISTS, or a DO $$ guard for CREATE TYPE, which has no
 -- IF NOT EXISTS) so a re-run against a partially-migrated database is safe.
+=======
+-- sql/migrations/001_extensions_enums_functions.sql — module m6 (SQL migrations and the
+-- migration runner). Extensions, the OKF full-text search configuration, every enum type, the
+-- shared `set_updated_at()` trigger function, and the migration ledger itself. Transcribed
+-- verbatim from Database.md's "## DDL" block — that document is the only authority on shape; if
+-- this file and Database.md ever disagree, Database.md changes first and this file follows.
+-- Every CREATE here is idempotent (IF NOT EXISTS, or a DO $$ … $$ guard for the enums, which have
+-- no CREATE TYPE IF NOT EXISTS), so re-running this file against a partially-migrated database is
+-- safe.
+>>>>>>> origin/claude/engineering-knowledge-workspace-uknsck
 
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE EXTENSION IF NOT EXISTS btree_gin;

@@ -28,7 +28,35 @@ export interface ClaudeAgentOptions {
   pipelineId?: string;
   /** Extra skill/plugin directories loaded for this invocation via --plugin-dir. */
   pluginDirs?: string[];
+  /**
+   * Tools to pre-approve for this invocation (`--allowedTools`).
+   *
+   * Required for any subagent expected to VERIFY its own work: acceptEdits
+   * auto-approves file edits but still gates Bash, so an agent told to run
+   * `npx tsc --noEmit` simply cannot, and reports the command as blocked. A
+   * build subagent that cannot run its own exit clauses is back to writing code
+   * blind, which is the failure this whole seam exists to prevent.
+   */
+  allowedTools?: string[];
 }
+
+/**
+ * What a subagent needs in order to build AND check its own work: edit files,
+ * run commands, and look things up rather than guess (npm versions, library
+ * docs). Deliberately does not include anything that reaches beyond the
+ * workspace or the read-only web.
+ */
+export const BUILDER_ALLOWED_TOOLS = [
+  "Bash",
+  "Read",
+  "Write",
+  "Edit",
+  "Glob",
+  "Grep",
+  "WebFetch",
+  "WebSearch",
+  "TodoWrite",
+];
 
 /** Resolve the auth mode for a pipeline config (providers.planner.auth). */
 export function claudeAuthFromConfig(config: any): { auth: ClaudeAuthMode; apiKey?: string } {
@@ -98,6 +126,9 @@ export async function spawnClaudeAgent(opts: ClaudeAgentOptions): Promise<string
   }
   for (const dir of opts.pluginDirs ?? []) {
     args.push("--plugin-dir", dir);
+  }
+  if (opts.allowedTools?.length) {
+    args.push("--allowedTools", ...opts.allowedTools);
   }
 
   const env: NodeJS.ProcessEnv = { ...process.env };

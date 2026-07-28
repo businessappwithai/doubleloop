@@ -1,0 +1,44 @@
+# src/modules/search/search-schema.graphql — SDL fragment for module m12 (Implementation.md
+# m12). `SearchHit` is a projection, not a `Node`: it is never fetched via `node(id)`, only ever
+# returned inside a `SearchHitConnection`. Its `id` field is still a Relay global id — the
+# underlying Concept's — so a client can navigate straight to the concept a hit came from.
+
+"""One ranked or containment-matched result within a bundle's search."""
+type SearchHit {
+  "The underlying Concept's Relay global id."
+  id: ID!
+  title: String!
+  path: String!
+  "Full-text relevance rank; 0 for a pure containment match with no text query."
+  rank: Float!
+  "A truncated excerpt around the first matched term, with matches wrapped in **bold**."
+  snippet: String!
+}
+
+type SearchHitEdge {
+  node: SearchHit!
+  cursor: String!
+}
+
+type SearchHitConnection {
+  edges: [SearchHitEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+extend type Query {
+  """
+  Searches a bundle's concepts. At least one of `text` or `containment` must be supplied —
+  omitting both raises a `search.emptyQuery` error. `containment` is a JSONB fragment matched
+  with `@>` against each concept's block payload.
+  """
+  search(
+    bundleId: ID!
+    text: String
+    containment: JSON
+    first: Int
+    after: String
+    last: Int
+    before: String
+  ): SearchHitConnection!
+}

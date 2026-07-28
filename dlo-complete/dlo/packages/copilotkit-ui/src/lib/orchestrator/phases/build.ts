@@ -26,7 +26,7 @@ import {
   savePipeline,
   pushPhaseHistory,
 } from "../state";
-import { spawnClaudeAgent, claudeAuthFromConfig, claudePermissionModeFromConfig } from "../subagents/claude";
+import { spawnClaudeAgent, claudeAuthFromConfig, claudePermissionModeFromConfig, BUILDER_ALLOWED_TOOLS } from "../subagents/claude";
 import { runDbProvisioningBackground, runBuildBackground, scaffoldMissingInfrastructure } from "./finalize";
 import { installDependencies, suggestCompatiblePairing } from "../npm";
 import { appendLog } from "../logStore";
@@ -206,6 +206,7 @@ ${MODULE_TEST_MANDATE}`;
     ...(apiKey ? { apiKey } : {}),
     timeoutMs: MODULE_TIMEOUT_MS,
     pipelineId: state.pipelineId,
+    allowedTools: BUILDER_ALLOWED_TOOLS,
     ...(pluginDirs.length ? { pluginDirs } : {}),
   });
 }
