@@ -1,6 +1,6 @@
 import { test, describe, expect, beforeEach, afterEach } from "vitest";
 import { Journal } from "../src/journal.js";
-import { saveSnapshot, loadLatestSnapshot, replayFrom } from "../src/snapshot.js";
+import {} from "../src/snapshot.js";
 import { mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -60,7 +60,7 @@ describe("Journal", () => {
 
     // Replay should throw integrity error or corruption error
     const replayer = async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+       
       for await (const _ of journal.replay()) {
         // do nothing
       }

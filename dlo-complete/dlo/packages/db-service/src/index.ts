@@ -16,7 +16,8 @@ app.use(express.json());
 
 app.get("/health", async (req: Request, res: Response) => {
   try {
-    const result = await query("SELECT 1");
+    // Liveness probe: the query only has to succeed, its rows are irrelevant.
+    await query("SELECT 1");
     res.json({
       status: "ok",
       database: "connected",

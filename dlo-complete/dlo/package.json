@@ -8,8 +8,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit && pnpm -r typecheck",
-    "lint": "eslint . --ext .ts,.tsx",
-    "lint:fix": "eslint . --ext .ts,.tsx --fix",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "test": "pnpm -r test",
     "test:watch": "pnpm -r test:watch",
     "build": "pnpm -r build",
@@ -23,6 +23,7 @@
     "@types/node": "^22.0.0",
     "eslint": "^9.0.0",
     "eslint-plugin-boundaries": "^6.0.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "tsx": "^4.7.0",
     "turbo": "^2.0.0",
     "typescript": "^5.6.0",

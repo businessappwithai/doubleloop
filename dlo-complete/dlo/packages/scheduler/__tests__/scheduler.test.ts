@@ -1,7 +1,7 @@
-import { test, describe, expect, vi } from "vitest";
+import { test, describe, expect } from "vitest";
 import { DagBoard } from "../src/board.js";
 import { DispatchPump } from "../src/pump.js";
-import { makeRunToken, makeModuleId } from "@dlo/core";
+import { makeModuleId } from "@dlo/core";
 import type { EngineeringPlan } from "@dlo/plan-schema";
 
 const mockPlan: EngineeringPlan = {
@@ -162,7 +162,7 @@ describe("Scheduler - DispatchPump", () => {
     // Mock executor
     let dispatched = 0;
     const mockExecutor = {
-      dispatch: async (task: any) => {
+      dispatch: async (_task: any) => {
         dispatched++;
         return "session-1";
       },

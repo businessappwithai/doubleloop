@@ -1,10 +1,10 @@
-import { test, describe, expect, vi } from "vitest";
-import { StateMachine, PipelineState } from "../src/state-machine.js";
+import { test, describe, expect } from "vitest";
+import {} from "../src/state-machine.js";
 import { SettlementTracker } from "../src/settlement.js";
 import { BudgetLedger } from "../src/budget.js";
 import { DoubleLoopController, EventBus } from "../src/controllers/double-loop.controller.js";
 import { DagBoard, DispatchPump } from "@dlo/scheduler";
-import { makeModuleId, makeRunToken, makeSnapshotRef } from "@dlo/core";
+import { makeModuleId } from "@dlo/core";
 import type { EngineeringPlan } from "@dlo/plan-schema";
 
 const mockPlan: EngineeringPlan = {
@@ -76,7 +76,7 @@ describe("Double-Loop Execution Simulation", () => {
     }, journal as any);
 
     const settlement = new SettlementTracker(journal as any);
-    let epochVal = 1;
+    const epochVal = 1;
     const epoch = () => epochVal;
 
     // Executor double
@@ -141,7 +141,7 @@ describe("Double-Loop Execution Simulation", () => {
     };
 
     const artifacts = {
-      putText: async (text: string, label: string) => ({ sha256: "hash", mediaType: "text/plain" })
+      putText: async (_text: string, _label: string) => ({ sha256: "hash", mediaType: "text/plain" })
     };
 
     const pump = new DispatchPump({
@@ -176,7 +176,7 @@ describe("Double-Loop Execution Simulation", () => {
 
     // Wait for async execution ticks to complete
     await new Promise<void>((resolve) => {
-      let interval = setInterval(() => {
+      const interval = setInterval(() => {
         if (board.allPassed()) {
           clearInterval(interval);
           resolve();

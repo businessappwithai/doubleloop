@@ -1,4 +1,4 @@
-import { test, describe, expect, vi } from "vitest";
+import { test, describe, expect } from "vitest";
 import { StateMachine, PipelineState } from "../src/state-machine.js";
 import { SettlementTracker } from "../src/settlement.js";
 import { BudgetLedger } from "../src/budget.js";
