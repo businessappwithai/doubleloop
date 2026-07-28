@@ -1,0 +1,71 @@
+# src/modules/git-sync/git-sync-schema.graphql — SDL fragment for the git-sync module
+# (Implementation.md m14). `Query` and `Mutation` are opened once in schema.root.graphql; this
+# fragment only `extend`s them. `GitSyncRun` does not `implement Node`: it is never fetched
+# directly via `node(id:)`, only listed per-bundle or returned from `triggerGitSync`, so it has no
+# entry in `src/core/global-id.ts`'s `NODE_TYPES` — `id`/`bundleId`/`remoteId` are plain opaque
+# strings, the same convention `ConceptDocument.conceptId` uses in the documents module fragment.
+
+"""Database.md `git_sync_status`."""
+enum GitSyncRunStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+}
+
+"""Database.md `git_sync_trigger`."""
+enum GitSyncTrigger {
+  SCHEDULE
+  MANUAL
+  STARTUP
+}
+
+"""One execution of the Git-sync worker (Database.md `git_sync_runs`)."""
+type GitSyncRun {
+  id: ID!
+  bundleId: ID!
+  remoteId: ID!
+  status: GitSyncRunStatus!
+  trigger: GitSyncTrigger!
+  startedAt: DateTime!
+  finishedAt: DateTime
+  """Hex-40 commit SHA. `null` unless `status` is `SUCCEEDED`."""
+  commitSha: String
+  filesWritten: Int!
+  filesDeleted: Int!
+  filesUnchanged: Int!
+  """The `AppError`-style machine-readable code. `null` unless `status` is `FAILED`."""
+  errorCode: String
+  """Redacted failure message. `null` unless `status` is `FAILED`."""
+  errorMessage: String
+}
+
+type GitSyncRunEdge {
+  node: GitSyncRun!
+  cursor: String!
+}
+
+type GitSyncRunConnection {
+  edges: [GitSyncRunEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+extend type Query {
+  """Run history for a bundle, most recent first."""
+  gitSyncRuns(bundleId: ID!, first: Int, after: String, last: Int, before: String): GitSyncRunConnection!
+}
+
+input TriggerGitSyncInput {
+  bundleId: ID!
+}
+
+type TriggerGitSyncPayload {
+  run: GitSyncRun!
+}
+
+extend type Mutation {
+  """Runs the full export → commit → push cycle for a bundle on demand (`trigger: MANUAL`)."""
+  triggerGitSync(input: TriggerGitSyncInput!): TriggerGitSyncPayload!
+}
