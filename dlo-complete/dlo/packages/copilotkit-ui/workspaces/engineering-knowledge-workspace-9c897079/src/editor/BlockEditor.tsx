@@ -22,7 +22,7 @@ import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import type { LexicalEditor } from "lexical";
 import { createEditorInitialConfig } from "./config/editor-config";
 import { registerMarkdownShortcuts } from "./transforms/markdown-shortcuts";
-import { editorStateToMarkdown, markdownToEditorState } from "./markdown/serialize";
+import { $populateFromMarkdown, editorStateToMarkdown } from "./markdown/serialize";
 import { Toolbar } from "./Toolbar";
 
 const styles = stylex.create({
@@ -92,7 +92,7 @@ export function BlockEditor({
       createEditorInitialConfig(namespace, {
         ...(editable !== undefined ? { editable } : {}),
         ...(initialMarkdown !== undefined
-          ? { editorState: (editor: LexicalEditor) => markdownToEditorState(editor, initialMarkdown) }
+          ? { editorState: () => $populateFromMarkdown(initialMarkdown) }
           : {}),
       }),
     // Read once on mount, matching Lexical's InitialConfigType contract — see module header.
