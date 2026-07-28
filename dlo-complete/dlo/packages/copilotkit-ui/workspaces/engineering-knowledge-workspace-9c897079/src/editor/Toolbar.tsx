@@ -10,11 +10,13 @@ import * as stylex from "@stylexjs/stylex";
 import { Toolbar as AstryxToolbar, ToggleButton } from "@astryxdesign/core";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import {
+  $createNodeSelection,
   $createParagraphNode,
   $getSelection,
   $isElementNode,
   $isNodeSelection,
   $isRangeSelection,
+  $setSelection,
   FORMAT_TEXT_COMMAND,
   type LexicalEditor,
   type TextFormatType,
@@ -123,7 +125,17 @@ function formatCodeBlock(editor: LexicalEditor): void {
     if ($isCodeBlockNode(topLevel) || !$isElementNode(topLevel)) {
       return;
     }
-    topLevel.replace($createCodeBlockNode(topLevel.getTextContent(), "plaintext"));
+    const codeBlock = $createCodeBlockNode(topLevel.getTextContent(), "plaintext");
+    topLevel.replace(codeBlock);
+    // `replace()`'s default selection restoration can only carry a RangeSelection onto a
+    // replacement that still has text content; CodeBlockNode is a childless DecoratorNode, so
+    // without this the old selection is left pointing at a removed node and the next commit
+    // fails Lexical's "selection has been lost" invariant. A NodeSelection on the code block
+    // itself is what the rest of this module (see `$readToolbarState`) already expects a
+    // selected code block to look like.
+    const nodeSelection = $createNodeSelection();
+    nodeSelection.add(codeBlock.getKey());
+    $setSelection(nodeSelection);
   });
 }
 

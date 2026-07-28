@@ -37,6 +37,35 @@ import { BlockEditor } from "../src/editor/BlockEditor";
 import { $createCodeBlockNode, $isCodeBlockNode } from "../src/editor/nodes/code-block-node";
 import { $createDividerNode, $isDividerNode } from "../src/editor/nodes/divider-node";
 
+// Astryx's `ToggleButton` always passes an async `clickAction` to `Button` (its ternary that
+// would skip it only applies inside a `ToggleButtonGroup`), so every click below briefly renders
+// `Button`'s pending `Spinner`. `Spinner`'s mount effect calls `canvas.getContext('2d')`, which
+// jsdom does not implement — it logs the gap via its virtual console rather than throwing, and
+// `vitest.setup.ts` turns any stray `console.error` into a hard test failure. Stubbed to return
+// `null`, which is exactly the "no context available" path `Spinner`'s effect already handles by
+// returning early — the spinner simply doesn't animate under jsdom.
+HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext;
+
+// jsdom implements `Element.prototype.getBoundingClientRect` (a zero `DOMRect`, since jsdom does
+// no real layout) but not `Range.prototype.getBoundingClientRect`/`getClientRects`. A
+// `FORMAT_TEXT_COMMAND` dispatch commits through Lexical's full reconciliation path, including
+// `$updateDOMSelection`'s scroll-into-view step, which calls `getBoundingClientRect()` on the
+// live DOM `Range` for a non-collapsed selection — a `TypeError` under jsdom otherwise. Stubbed
+// to the same zero-rect jsdom already returns for elements.
+const zeroRect = (): DOMRect => ({
+  x: 0,
+  y: 0,
+  width: 0,
+  height: 0,
+  top: 0,
+  right: 0,
+  bottom: 0,
+  left: 0,
+  toJSON: () => ({}),
+});
+Range.prototype.getBoundingClientRect = zeroRect;
+Range.prototype.getClientRects = (() => [] as unknown as DOMRectList) as typeof Range.prototype.getClientRects;
+
 function uniqueNamespace(prefix: string): string {
   return `${prefix}-${Math.random().toString(36).slice(2)}`;
 }
@@ -73,12 +102,17 @@ function readState<T>(editor: LexicalEditor, run: () => T): T {
   return editor.getEditorState().read(run);
 }
 
-/** Clicks a toolbar button by its accessible name and flushes the resulting non-discrete update. */
+/**
+ * Clicks a toolbar button by its accessible name and flushes the resulting non-discrete update.
+ * A macrotask tick (rather than a single microtask, as `editor-block-editor.test.tsx` uses for a
+ * lone mutation) drains any chained microtasks a command dispatch schedules on top of its own
+ * commit — e.g. the post-commit DOM-selection sync — before the next click reads toolbar state.
+ */
 async function clickToggle(name: string): Promise<void> {
   const button = screen.getByRole("button", { name });
   fireEvent.click(button);
   await act(async () => {
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
   });
 }
 
