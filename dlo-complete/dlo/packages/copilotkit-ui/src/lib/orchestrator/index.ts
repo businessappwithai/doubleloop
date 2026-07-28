@@ -321,3 +321,45 @@ export async function approveDocument(
   await savePipeline(state);
   return state;
 }
+
+// ─── Crash recovery ──────────────────────────────────────────────────────────
+
+export {
+  recoverInterruptedPipelines,
+  isInterrupted,
+  requeueStrandedModules,
+  resumePhase,
+  RESUMABLE_PHASES,
+} from "./recovery";
+export type { PhaseRunners, RecoveryResult } from "./recovery";
+
+/**
+ * The concrete phase runners, bound to this module's real implementations.
+ * Recovery takes them as a parameter so it stays testable, but callers should
+ * use this rather than re-deriving the mapping.
+ */
+export const REAL_PHASE_RUNNERS = {
+  research: (id: string) => void runResearchBackground(id),
+  design: (id: string) => void runDesignBackground(id),
+  ceoReview: (id: string) => void import("./phases/review").then((m) => m.runCeoReviewBackground(id)),
+  execution: (id: string) => void runExecutionBackground(id),
+  build: (id: string, ok: boolean) => void runBuildBackground(id, ok),
+  dbProvisioning: (id: string, ok: boolean) => void runDbProvisioningBackground(id, ok),
+  testing: (id: string, ok: boolean) => void runTestingBackground(id, ok),
+  deploy: (id: string, ok: boolean) => void runDeployBackground(id, ok),
+};
+
+/**
+ * Resume every pipeline this process found interrupted. Called once at startup
+ * (instrumentation.ts) so a host restart costs the fleet a few minutes rather
+ * than everything it had built.
+ */
+export async function recoverOnStartup(): Promise<void> {
+  const { recoverInterruptedPipelines } = await import("./recovery");
+  const recovered = await recoverInterruptedPipelines(REAL_PHASE_RUNNERS);
+  if (recovered.length === 0) return;
+  console.warn(
+    `[Recovery] Resumed ${recovered.length} interrupted pipeline(s): ` +
+      recovered.map((r) => `${r.pipelineId.slice(0, 8)}=${r.phase}`).join(", ")
+  );
+}
