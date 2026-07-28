@@ -104,26 +104,46 @@ export interface WithOptimisticConfig<TOperation extends MutationParameters = Mu
  * `ConnectionHandler` sequence. When neither `insertEdge` nor `removeEdge` is given this composes
  * nothing and behaves exactly like `commitMutation`. When both the config's own `optimisticUpdater`
  * and an edge edit are given, the edge edit runs first, then the caller's updater.
+ *
+ * The edge edit is applied twice: once as `optimisticUpdater` (visible synchronously, before the
+ * network responds) and once as `updater` (applied against the real payload once it lands). Relay
+ * discards the optimistic proxy entirely once the real response commits and replaces it with only
+ * what the real payload normalizes — for a mutation whose selection doesn't itself return the
+ * connection field (the common case here), skipping the second application would make the edge
+ * flicker away the instant the server confirms. Running the same edit as `updater` keeps it.
  */
 export function withOptimistic<TOperation extends MutationParameters = MutationParameters>(
   environment: Environment,
   config: WithOptimisticConfig<TOperation>,
 ): Disposable {
-  const { insertEdge, removeEdge, optimisticUpdater, ...rest } = config;
+  const { insertEdge, removeEdge, optimisticUpdater, updater, ...rest } = config;
 
   if (!insertEdge && !removeEdge) {
-    return commitMutation(environment, { ...rest, optimisticUpdater });
+    return commitMutation(environment, { ...rest, optimisticUpdater, updater });
   }
 
-  const composedOptimisticUpdater: SelectorStoreUpdater<TOperation["response"]> = (store, data) => {
+  const applyEdgeEdit = (store: Parameters<SelectorStoreUpdater<TOperation["response"]>>[0]): void => {
     if (insertEdge) {
       insertOptimisticEdge(store, insertEdge);
     }
     if (removeEdge) {
       removeOptimisticEdge(store, removeEdge);
     }
+  };
+
+  const composedOptimisticUpdater: SelectorStoreUpdater<TOperation["response"]> = (store, data) => {
+    applyEdgeEdit(store);
     optimisticUpdater?.(store, data);
   };
 
-  return commitMutation(environment, { ...rest, optimisticUpdater: composedOptimisticUpdater });
+  const composedUpdater: SelectorStoreUpdater<TOperation["response"]> = (store, data) => {
+    applyEdgeEdit(store);
+    updater?.(store, data);
+  };
+
+  return commitMutation(environment, {
+    ...rest,
+    optimisticUpdater: composedOptimisticUpdater,
+    updater: composedUpdater,
+  });
 }

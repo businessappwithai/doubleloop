@@ -53,7 +53,7 @@ describe("FrontmatterPanel", () => {
     expect(screen.getByRole("textbox", { name: "Source" })).toHaveValue("https://example.com/doc");
     expect(screen.getByRole("textbox", { name: "Author" })).toHaveValue("jane@example.com");
     expect(screen.getByRole("textbox", { name: "Retrieved at" })).toHaveValue("2026-01-15T10:00:00.000Z");
-    expect(screen.getByRole("textbox", { name: "Checksum" })).toHaveValue("sha256:abc123");
+    expect(screen.getByRole("textbox", { name: /^Checksum/ })).toHaveValue("sha256:abc123");
 
     expect(screen.getByRole("radio", { name: "Human-reviewed" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "Active" })).toBeChecked();
@@ -67,7 +67,7 @@ describe("FrontmatterPanel", () => {
     render(<FrontmatterPanel frontmatter={MINIMAL} onSave={vi.fn()} />);
 
     expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Untitled Concept");
-    expect(screen.getByRole("textbox", { name: "Checksum" })).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: /^Checksum/ })).toHaveValue("");
     expect(screen.getByText("No tags yet.")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "Unverified" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "Draft" })).toBeChecked();
@@ -103,7 +103,7 @@ describe("FrontmatterPanel", () => {
     expect(author).toHaveValue("new-author@example.com");
     expect(screen.getByRole("textbox", { name: "Source" })).toHaveValue("https://example.com/doc");
     expect(screen.getByRole("textbox", { name: "Retrieved at" })).toHaveValue("2026-01-15T10:00:00.000Z");
-    expect(screen.getByRole("textbox", { name: "Checksum" })).toHaveValue("sha256:abc123");
+    expect(screen.getByRole("textbox", { name: /^Checksum/ })).toHaveValue("sha256:abc123");
   });
 
   test("selects each TrustLevel option via its radio", async () => {
