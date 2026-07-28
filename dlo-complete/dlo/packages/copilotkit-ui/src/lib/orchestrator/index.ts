@@ -363,3 +363,24 @@ export async function recoverOnStartup(): Promise<void> {
       recovered.map((r) => `${r.pipelineId.slice(0, 8)}=${r.phase}`).join(", ")
   );
 }
+
+/**
+ * Run startup recovery exactly once per server process, lazily.
+ *
+ * Deliberately NOT Next's instrumentation.ts hook: that file is compiled for
+ * every runtime including edge, where webpack cannot resolve
+ * `node:child_process` — importing the orchestrator from it fails the whole
+ * build with UnhandledSchemeError. API routes are guaranteed Node, so the first
+ * request that touches the pipeline API is a safe and equally early trigger.
+ */
+let recoveryPromise: Promise<void> | null = null;
+
+export function ensureRecovered(): Promise<void> {
+  if (!recoveryPromise) {
+    recoveryPromise = recoverOnStartup().catch((err: any) => {
+      // Never let recovery failure break the request that triggered it.
+      console.error("[Recovery] Startup recovery failed:", err?.message ?? err);
+    });
+  }
+  return recoveryPromise;
+}
