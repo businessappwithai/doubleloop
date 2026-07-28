@@ -625,7 +625,7 @@ function DloChat({ onConfigSave, copilotKitReady = false }: { onConfigSave?: () 
   // Fetch skills status on mount
   useEffect(() => {
     fetchSkills();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, []);
 
   // Resume pipeline from ?pipeline=<id> URL param or localStorage

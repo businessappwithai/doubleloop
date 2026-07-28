@@ -132,10 +132,13 @@ describe("createFetchFn", () => {
     const fetchImpl: FetchImpl = vi.fn().mockResolvedValue(rawResponse(200, rawBody));
     const fetchGraphQL = createFetchFn({ endpoint: "/api/graphql", fetchImpl });
 
-    await expect(fetchGraphQL(REQUEST, VARIABLES, {})).rejects.toMatchObject({
-      constructor: ValidationError,
-      message: "relay.malformedResponse",
-    });
+    try {
+      await fetchGraphQL(REQUEST, VARIABLES, {});
+      throw new Error("expected fetchGraphQL to reject");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ValidationError);
+      expect((err as ValidationError).message).toBe("relay.malformedResponse");
+    }
   });
 
   test("rejects with GraphQLPayloadError preserving extensions.code for a single error", async () => {
