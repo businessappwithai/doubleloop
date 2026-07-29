@@ -7,13 +7,16 @@
 // config's plugin stack is needed here. The empty-suite override is intentionally left
 // unset — Vitest's own default already fails an empty or mis-globbed suite loudly rather
 // than reporting a false green (see tests/harness.test.ts).
+// `viteReact`'s `babel.plugins: ["relay"]` mirrors app.config.ts (m21) — component tests that
+// render a `graphql`-tagged component need the same compile step the real build gets, or the
+// tagged template stays react-relay's throwing runtime stub instead of a compiled query reference.
 import { defineConfig } from "vitest/config";
 import viteReact from "@vitejs/plugin-react";
 import { astryxStylex } from "@astryxdesign/build/vite";
 import { fileURLToPath } from "node:url";
 
 export default defineConfig({
-  plugins: [...astryxStylex(), viteReact()],
+  plugins: [...astryxStylex(), viteReact({ babel: { plugins: ["relay"] } })],
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

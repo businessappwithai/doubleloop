@@ -10,6 +10,13 @@
 // The server entry is named `src/ssr.tsx`, not the framework's default lookup name
 // (`src/server.tsx`), so `server.entry` below must point at it explicitly — see ssr.tsx's
 // own header comment for why the file keeps that name.
+//
+// `viteReact`'s `babel.plugins: ["relay"]` (m21) compiles every `graphql` tagged template in
+// `.ts`/`.tsx` sources into a `require()` of the artifact `relay-compiler` (`npm run relay`)
+// emits under `src/__generated__/` — `react-relay`'s own `graphql` export is a stub that throws
+// "Unexpected invocation at runtime" unless this transform runs first. No module before m21 used
+// a `graphql` tag from a React component (m7-m15's SDL fragments are plain `.graphql`/hand-written
+// resolver files, not Relay client documents), so this is the first place that wiring is needed.
 import { defineConfig } from "vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
@@ -27,6 +34,6 @@ export default defineConfig({
     tanstackStart({
       server: { entry: "ssr" },
     }),
-    viteReact(),
+    viteReact({ babel: { plugins: ["relay"] } }),
   ],
 });
