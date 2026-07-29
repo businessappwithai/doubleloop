@@ -25,11 +25,59 @@ import { afterEach, vi } from "vitest";
 
 // relay-test-utils calls `jest.fn()` internally (RelayModernMockEnvironment's
 // mockDisposableMethod), so createMockEnvironment() throws "jest is not defined"
-// under Vitest and every Relay-backed route test fails before it can render.
-// Vitest's `vi` implements the mock-factory surface that library uses, so
-// exposing it under the name relay-test-utils expects is the whole fix. Confined
-// to the test setup — nothing in src/ ever sees a `jest` global.
-(globalThis as typeof globalThis & { jest?: typeof vi }).jest = vi;
+// under Vitest and every Relay-backed route test dies before rendering.
+//
+// Aliasing straight to `vi` is NOT enough: this config sets clearMocks and
+// restoreMocks, so after each test Vitest restores every vi.fn() it created —
+// including Relay's. Relay replaces those mocks' own `mockClear` with a method
+// that expects Relay's environment as `this`, so the automatic restore calls it
+// unbound and throws "Cannot set properties of undefined (setting
+// 'subscriptions')" for every test after the first in a file.
+//
+// So `jest.fn` here is a standalone mock factory rather than vi.fn: it gives
+// relay-test-utils the surface it uses (.mock.calls, mockClear/mockReset,
+// mockImplementation/mockReturnValue) while staying invisible to Vitest's
+// auto-restore, which is what was corrupting it. Everything else on `jest`
+// delegates to `vi`. Confined to test setup — nothing in src/ sees a `jest`
+// global.
+type MockFn = ((...args: unknown[]) => unknown) & {
+  mock: { calls: unknown[][] };
+  mockClear: () => MockFn;
+  mockReset: () => MockFn;
+  mockRestore: () => MockFn;
+  mockImplementation: (next: (...args: unknown[]) => unknown) => MockFn;
+  mockReturnValue: (value: unknown) => MockFn;
+};
+
+function standaloneMockFn(impl?: (...args: unknown[]) => unknown): MockFn {
+  let current = impl;
+  const calls: unknown[][] = [];
+  const fn = ((...args: unknown[]) => {
+    calls.push(args);
+    return current?.(...args);
+  }) as MockFn;
+  fn.mock = { calls };
+  fn.mockClear = () => {
+    calls.length = 0;
+    return fn;
+  };
+  fn.mockReset = fn.mockClear;
+  fn.mockRestore = fn.mockClear;
+  fn.mockImplementation = (next) => {
+    current = next;
+    return fn;
+  };
+  fn.mockReturnValue = (value) => {
+    current = () => value;
+    return fn;
+  };
+  return fn;
+}
+
+(globalThis as typeof globalThis & { jest?: unknown }).jest = {
+  ...vi,
+  fn: standaloneMockFn,
+};
 
 import { cleanup } from "@testing-library/react";
 

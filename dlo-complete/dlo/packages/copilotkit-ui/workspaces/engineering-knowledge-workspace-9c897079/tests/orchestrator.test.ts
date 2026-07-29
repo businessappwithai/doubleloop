@@ -132,8 +132,11 @@ describe("createOrchestrator — wiring", () => {
   // Building two real schemas (each parsing the full merged SDL from scratch via `buildSchema`)
   // is measurably slower than everything else in this file — comfortably under a second in
   // isolation, but the default 5000ms `testTimeout` has been observed to be too tight for it when
-  // the whole `pnpm test` suite runs under load (many worker processes contending for CPU). The
-  // assertion itself is cheap; only the two real `buildOrchestratorSchema` calls are not.
+  // the whole `pnpm test` suite runs under load (many worker processes contending for CPU). Under
+  // `--coverage`, v8's instrumentation adds further overhead on top of that contention — measured
+  // at ~18.5s in isolation, which left the earlier 20_000ms budget for genuine timeouts under a
+  // fully loaded suite. The assertion itself is cheap; only the two real
+  // `buildOrchestratorSchema` calls are not.
   test(
     "two orchestrators from the same process do not share module instances",
     () => {
@@ -143,7 +146,7 @@ describe("createOrchestrator — wiring", () => {
       expect(a.modules.documents).not.toBe(b.modules.documents);
       expect(a.schema()).not.toBe(b.schema());
     },
-    20_000,
+    45_000,
   );
 });
 
