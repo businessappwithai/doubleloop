@@ -32,7 +32,17 @@ import { installDependencies, suggestCompatiblePairing } from "../npm";
 import { appendLog } from "../logStore";
 
 const execFileAsync = promisify(execFile);
-const MODULE_TIMEOUT_MS = 20 * 60_000;
+/**
+ * Wall-clock budget for one build subagent attempt.
+ *
+ * 20 minutes was too short for the large modules and cost real attempts:
+ * the Astryx UI shell, the Yjs collaboration client and the orchestrator
+ * assembly module each timed out mid-work, and a timeout burns an attempt
+ * without producing a critique the next one can use. These modules legitimately
+ * write a dozen files and run their own typecheck and test suite before
+ * finishing, which is exactly the behavior the tooling mandate asks for.
+ */
+const MODULE_TIMEOUT_MS = 45 * 60_000;
 
 // ─── Module + context types ───────────────────────────────────────────────────
 
