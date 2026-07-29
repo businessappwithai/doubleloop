@@ -49,7 +49,7 @@ describe("root route (__root.tsx)", () => {
         { title: "Engineering Knowledge Workspace" },
       ]),
     );
-    expect(head?.links).toHaveLength(2);
+    expect(head?.links).toHaveLength(3);
     expect(head?.links?.every((link) => link.rel === "stylesheet")).toBe(true);
   });
 
