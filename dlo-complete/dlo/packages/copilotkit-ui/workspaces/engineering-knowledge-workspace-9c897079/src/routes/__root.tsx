@@ -24,6 +24,12 @@ export const Route = createRootRoute({
     ],
     links: [
       { rel: "stylesheet", href: astryxThemeCss },
+      // StyleX compiles every Astryx component's styles into one sheet that the
+      // astryxStylex() plugin serves at this URL. It is a served path, not an
+      // importable module — importing it fails SSR resolution — so it has to be
+      // linked. Without it the theme tokens load but no layout or spacing rules
+      // do, and the whole app renders unstyled.
+      { rel: "stylesheet", href: "/virtual:stylex.css" },
       { rel: "stylesheet", href: globalCss },
     ],
   }),
