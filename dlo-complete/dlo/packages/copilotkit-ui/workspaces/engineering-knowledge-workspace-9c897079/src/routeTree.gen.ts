@@ -10,33 +10,64 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SearchRouteImport } from './routes/search'
+import { Route as BundlesBundleIdRouteImport } from './routes/bundles.$bundleId'
+import { Route as ConceptsConceptIdRouteImport } from './routes/concepts.$conceptId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SearchRoute = SearchRouteImport.update({
+  id: '/search',
+  path: '/search',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BundlesBundleIdRoute = BundlesBundleIdRouteImport.update({
+  id: '/bundles/$bundleId',
+  path: '/bundles/$bundleId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConceptsConceptIdRoute = ConceptsConceptIdRouteImport.update({
+  id: '/concepts/$conceptId',
+  path: '/concepts/$conceptId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/search': typeof SearchRoute
+  '/bundles/$bundleId': typeof BundlesBundleIdRoute
+  '/concepts/$conceptId': typeof ConceptsConceptIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/search': typeof SearchRoute
+  '/bundles/$bundleId': typeof BundlesBundleIdRoute
+  '/concepts/$conceptId': typeof ConceptsConceptIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/search': typeof SearchRoute
+  '/bundles/$bundleId': typeof BundlesBundleIdRoute
+  '/concepts/$conceptId': typeof ConceptsConceptIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/search' | '/bundles/$bundleId' | '/concepts/$conceptId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/search' | '/bundles/$bundleId' | '/concepts/$conceptId'
+  id:
+    '__root__' | '/' | '/search' | '/bundles/$bundleId' | '/concepts/$conceptId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  SearchRoute: typeof SearchRoute
+  BundlesBundleIdRoute: typeof BundlesBundleIdRoute
+  ConceptsConceptIdRoute: typeof ConceptsConceptIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +79,35 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/search': {
+      id: '/search'
+      path: '/search'
+      fullPath: '/search'
+      preLoaderRoute: typeof SearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/bundles/$bundleId': {
+      id: '/bundles/$bundleId'
+      path: '/bundles/$bundleId'
+      fullPath: '/bundles/$bundleId'
+      preLoaderRoute: typeof BundlesBundleIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/concepts/$conceptId': {
+      id: '/concepts/$conceptId'
+      path: '/concepts/$conceptId'
+      fullPath: '/concepts/$conceptId'
+      preLoaderRoute: typeof ConceptsConceptIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  SearchRoute: SearchRoute,
+  BundlesBundleIdRoute: BundlesBundleIdRoute,
+  ConceptsConceptIdRoute: ConceptsConceptIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
