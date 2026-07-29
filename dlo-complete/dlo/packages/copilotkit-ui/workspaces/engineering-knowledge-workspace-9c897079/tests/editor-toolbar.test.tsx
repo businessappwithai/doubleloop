@@ -83,6 +83,18 @@ async function mountToolbar(): Promise<{ editor: LexicalEditor; result: RenderRe
   await act(async () => {
     await Promise.resolve();
   });
+  // A real user has the content-editable focused before a toolbar click ever lands (that's how
+  // a selection gets there in the first place). Without an actual DOM focus, jsdom's Selection
+  // API can't tell the root element is "active", and Lexical's post-commit DOM-selection sync —
+  // which only touches the DOM when it agrees an editor is focused — falls through to leaving a
+  // stale native selection in place; the *next* selectionchange event then reads that stale,
+  // unrelated selection back into the editor and collapses it. That surfaces after the second
+  // formatting command in a row (the first always forces a DOM tag swap, which happens to
+  // reset the native selection correctly regardless of focus; the second is often an in-place
+  // class-only update, which does not). `result.container` always has exactly one
+  // `[contenteditable]` — `BlockEditor` renders a single `ContentEditable`.
+  const editable = result.container.querySelector<HTMLElement>("[contenteditable]");
+  editable?.focus();
   return { editor: captured as LexicalEditor, result };
 }
 
