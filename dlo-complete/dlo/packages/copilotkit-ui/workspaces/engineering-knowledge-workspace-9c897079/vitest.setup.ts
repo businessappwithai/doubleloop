@@ -22,6 +22,15 @@ globalThis.React = React;
 
 import "@testing-library/jest-dom/vitest";
 import { afterEach, vi } from "vitest";
+
+// relay-test-utils calls `jest.fn()` internally (RelayModernMockEnvironment's
+// mockDisposableMethod), so createMockEnvironment() throws "jest is not defined"
+// under Vitest and every Relay-backed route test fails before it can render.
+// Vitest's `vi` implements the mock-factory surface that library uses, so
+// exposing it under the name relay-test-utils expects is the whole fix. Confined
+// to the test setup — nothing in src/ ever sees a `jest` global.
+(globalThis as typeof globalThis & { jest?: typeof vi }).jest = vi;
+
 import { cleanup } from "@testing-library/react";
 
 const originalConsoleError = console.error;
