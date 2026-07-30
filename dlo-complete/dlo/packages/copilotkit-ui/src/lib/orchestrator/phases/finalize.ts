@@ -423,7 +423,33 @@ export interface TestOutcome {
  * is the failure mode this pipeline exists to prevent. Recognizes vitest
  * ("Tests  12 passed (12)"), jest ("Tests: 3 passed, 3 total") and Gradle.
  */
-export function assessTestOutcome(output: string): TestOutcome {
+/**
+ * Removes ANSI escape sequences (colour, cursor moves, erase-line) from runner output.
+ *
+ * Test runners colour their output whenever they believe a terminal is watching, and vitest treats
+ * the `CI=true` this phase sets as such an environment. The result is that the summary line a human
+ * reads as
+ *
+ *   Tests  1396 passed (1396)
+ *
+ * arrives with escape codes sitting *between* the very words every pattern below anchors on.
+ * Without stripping them first, {@link assessTestOutcome} counted zero tests in a fully passing
+ * 1396-test suite, and the empty-suite guard spawned the Test Author subagent to "fix" it — the
+ * guard firing on exactly the healthy case it exists to tell apart from an empty one.
+ *
+ * Observed, not theorised: this is what a real pipeline run did to a suite of 77 files.
+ */
+export function stripAnsi(text: string): string {
+  // CSI sequences (ESC [ ... final byte) plus the two-character ESC forms runners emit.
+  const CSI = new RegExp(String.fromCharCode(27) + "\\[[0-9;?]*[ -/]*[@-~]", "g");
+  const TWO_CHAR = new RegExp(String.fromCharCode(27) + "[@-Z\\\\-_]", "g");
+  return text.replace(CSI, "").replace(TWO_CHAR, "");
+}
+
+export function assessTestOutcome(rawOutput: string): TestOutcome {
+  // Every pattern below anchors on line starts and word boundaries, so colour codes between the
+  // words would defeat all of them. Strip once, up front.
+  const output = stripAnsi(rawOutput);
   const reportedEmpty = /no test (?:files|suites)? ?found|no tests found/i.test(output);
 
   let testsRun = 0;

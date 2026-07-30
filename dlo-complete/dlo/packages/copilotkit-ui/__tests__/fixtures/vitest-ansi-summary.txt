@@ -1,0 +1,17 @@
+[32m✓[39m tests/migrations-sql.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [32m✓[39m tests/server-schema.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 213[2mms[22m[39m
+ [32m✓[39m tests/graphql-route.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [32m✓[39m tests/api-router.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 21[2mms[22m[39m
+ [32m✓[39m tests/seed-runner.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32m✓[39m tests/harness.config.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m tests/orchestrator.test.ts [2m([22m[2m15 tests[22m[2m)[22m[33m 2929[2mms[22m[39m
+   [33m[2m✓[22m[39m createOrchestrator — wiring[2m > [22mtwo orchestrators from the same process do not share module instances [33m 2846[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m77 passed[39m[22m[90m (77)[39m
+[2m      Tests [22m [1m[32m1396 passed[39m[22m[90m (1396)[39m
+[2m   Start at [22m 13:27:57
+[2m   Duration [22m 49.20s[2m (transform 16.60s, setup 12.59s, collect 58.08s, tests 15.33s, environment 32.67s, prepare 7.41s)[22m
+
+close timed out after 10000ms
+Tests closed successfully but something prevents Vite server from exiting
+You can try to identify the cause by enabling "hanging-process" reporter. See https://vitest.dev/config/#reporters

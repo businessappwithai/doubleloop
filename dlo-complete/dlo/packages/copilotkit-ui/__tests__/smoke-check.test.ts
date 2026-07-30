@@ -42,7 +42,7 @@ function fakeFetch(
       headers: { get: () => null },
       text: async () => hit.body,
     };
-  }) as FetchLike & { calls: Array<{ url: string; method: string }> };
+  }) as unknown as FetchLike & { calls: Array<{ url: string; method: string }> };
   impl.calls = calls;
   return impl;
 }
