@@ -476,14 +476,53 @@ export function assessTestOutcome(rawOutput: string): TestOutcome {
   return { testsRun, noTestsFound: testsRun === 0 || reportedEmpty };
 }
 
+/** Port used when a launch script does not pin one of its own and only `PORT` decides. */
+export const DEFAULT_LAUNCH_PORT = 3001;
+
+/**
+ * Reads the port a launch script will actually bind, or `null` when it leaves the choice to `PORT`.
+ *
+ * This is not a nicety. A generated app's `dev` script commonly pins its own port —
+ * `vite dev --port 3000`, `next dev -p 3000` — and a CLI flag beats the `PORT` environment variable
+ * the deploy phase exports. Assuming a fixed port meant the phase launched the app successfully,
+ * then polled a port nothing would ever answer on: it waited the full 60 s, recorded
+ * `deployed: false` and `appUrl: "http://localhost:3001 (starting up)"` for an app that was serving
+ * happily on 3000, and skipped the smoke check entirely because the app never looked ready.
+ *
+ * Recognises `--port 3000`, `--port=3000`, `-p 3000`, `-p=3000` and a leading `PORT=3000` env
+ * assignment. Returns `null` for anything else — including `--port $PORT`, where the script really
+ * is deferring to the environment.
+ */
+export function parseScriptPort(script: string): number | null {
+  const flag = script.match(/(?:^|\s)(?:--port|-p)(?:[=\s]+)(\d{2,5})(?:\s|$)/);
+  if (flag?.[1]) return Number(flag[1]);
+  const envPrefix = script.match(/(?:^|\s|;|&)PORT=(\d{2,5})(?:\s|$)/);
+  if (envPrefix?.[1]) return Number(envPrefix[1]);
+  return null;
+}
+
 export async function detectLaunchCommand(workspaceDir: string): Promise<{ cmd: string; args: string[]; port: number } | null> {
   if (existsSync(join(workspaceDir, "build.gradle.kts")) || existsSync(join(workspaceDir, "build.gradle"))) {
     return null;
   }
   try {
     const pkg = JSON.parse(await readFile(join(workspaceDir, "package.json"), "utf-8"));
-    if (pkg.scripts?.dev) return { cmd: "npm", args: ["run", "dev"], port: 3001 };
-    if (pkg.scripts?.start) return { cmd: "npm", args: ["start"], port: 3001 };
+    // Prefer the port the script itself pins: a CLI flag wins over the PORT we export, so that is
+    // the port the app will really be listening on.
+    if (pkg.scripts?.dev) {
+      return {
+        cmd: "npm",
+        args: ["run", "dev"],
+        port: parseScriptPort(String(pkg.scripts.dev)) ?? DEFAULT_LAUNCH_PORT,
+      };
+    }
+    if (pkg.scripts?.start) {
+      return {
+        cmd: "npm",
+        args: ["start"],
+        port: parseScriptPort(String(pkg.scripts.start)) ?? DEFAULT_LAUNCH_PORT,
+      };
+    }
   } catch { /* no package.json */ }
   return null;
 }
