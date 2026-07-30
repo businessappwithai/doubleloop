@@ -1,10 +1,10 @@
 # Handoff — engineering-knowledge-workspace
 
-> Completed: 2026-07-30T13:36:19.750Z
+> Completed: 2026-07-30T13:47:51.496Z
 
 ## App URL
 
-http://localhost:3001 (starting up)
+http://localhost:3000
 
 ## Workspace
 
