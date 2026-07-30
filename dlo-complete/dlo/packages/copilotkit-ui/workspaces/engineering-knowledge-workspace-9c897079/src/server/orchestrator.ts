@@ -193,11 +193,46 @@ export function createOrchestrator(
 }
 
 let singleton: Orchestrator | undefined;
+let startedSingleton: Promise<Orchestrator> | undefined;
+
+/**
+ * The process-wide {@link Orchestrator}, **started** — migrations applied (or checked, per
+ * `config.db.autoMigrate`) and the git-sync timer running — constructed and started at most once
+ * per process. This is what `src/routes/api/graphql.ts` resolves, not the bare
+ * {@link getOrchestrator}: constructing an orchestrator does not run `start()`, so before this
+ * existed every request executed against whatever schema happened to already be in the database —
+ * against nothing at all on a fresh one.
+ *
+ * A failed start is **not** cached. The promise is cleared on rejection so the next request
+ * retries rather than poisoning the process for its lifetime — a database still coming up when the
+ * first request lands is routine in dev and on a container start, and it must heal on its own. The
+ * `Orchestrator` itself is still built only once (via `getOrchestrator`), so a retry re-runs
+ * `start()` against the same instance rather than leaking connection pools.
+ */
+export function getStartedOrchestrator(): Promise<Orchestrator> {
+  if (!startedSingleton) {
+    startedSingleton = (async () => {
+      const orchestrator = getOrchestrator();
+      await orchestrator.start();
+      return orchestrator;
+    })().catch((error: unknown) => {
+      startedSingleton = undefined;
+      throw error;
+    });
+  }
+  return startedSingleton;
+}
+
+/** Test seam: forget the memoised instance and its start, so a suite can build a fresh one. */
+export function resetOrchestratorSingleton(): void {
+  singleton = undefined;
+  startedSingleton = undefined;
+}
 
 /**
  * The process-wide {@link Orchestrator}, built from `process.env` and the real adapters —
- * constructed at most once per process. `src/routes/api/graphql.ts` is this function's only
- * caller.
+ * constructed at most once per process. Prefer {@link getStartedOrchestrator}: this function
+ * deliberately does not `start()`, so nothing here has run migrations yet.
  */
 export function getOrchestrator(): Orchestrator {
   if (singleton) {

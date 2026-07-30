@@ -17,18 +17,25 @@
 // ecosystem converges on — so it is a drop-in once a future module upgrades the framework or wires
 // a router-level adapter; nothing here would need to change.
 //
+// The consequence of that, learned the hard way: because file-based routing never registers these
+// exports, NOTHING mounted them, so every GraphQL POST fell through to the router, rendered the
+// SPA shell and came back 404 — the UI loaded and could not reach its own backend. They are now
+// mounted by `src/server/api-router.ts` from the server entry (`src/ssr.tsx`), the one point both
+// `vite dev` and `vite preview` funnel every request through. Do not assume exporting a handler
+// here is enough; the route table in `ssr.tsx` is what makes it reachable.
+//
 // `createGraphqlHandlers(resolveOrchestrator)` is the actual implementation, parameterised over
 // how to obtain an `Orchestrator`, specifically so `tests/graphql-route.test.ts` can hand it a
 // fake `Orchestrator` (a stub `execute`/`createRequestContext`) and exercise every response branch
 // — 405, 400 (twice: unparseable JSON and a missing/invalid actor), and 200 with an `errors` array
 // — without constructing a real `PgDb`/Postgres connection. `GET`/`POST` are `createGraphqlHandlers`
-// bound to the real process singleton, `getOrchestrator` (`orchestrator.ts`), and are what a future
-// router wiring would actually register.
+// bound to the real process singleton, `getStartedOrchestrator` (`orchestrator.ts`) — the
+// *started* one, so migrations have run before the first query executes.
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Actor } from "../../core/context";
 import { asActorId } from "../../core/ids";
-import { getOrchestrator, type Orchestrator } from "../../server/orchestrator";
+import { getStartedOrchestrator, type Orchestrator } from "../../server/orchestrator";
 
 const ACTOR_ID_HEADER = "x-actor-id";
 const ACTOR_EMAIL_HEADER = "x-actor-email";
@@ -80,7 +87,14 @@ function resolveActor(request: Request): Actor | null {
   }
 }
 
-export function createGraphqlHandlers(resolveOrchestrator: () => Orchestrator): {
+/**
+ * How the handlers obtain an `Orchestrator`. Allowed to be async because the real resolver
+ * (`getStartedOrchestrator`) has to await `start()` — migrations — before the first query runs;
+ * a plain synchronous stub is still valid, which is what `tests/graphql-route.test.ts` passes.
+ */
+export type ResolveOrchestrator = () => Orchestrator | Promise<Orchestrator>;
+
+export function createGraphqlHandlers(resolveOrchestrator: ResolveOrchestrator): {
   GET: () => Promise<Response>;
   POST: (request: Request) => Promise<Response>;
 } {
@@ -103,7 +117,7 @@ export function createGraphqlHandlers(resolveOrchestrator: () => Orchestrator): 
       );
     }
 
-    const orchestrator = resolveOrchestrator();
+    const orchestrator = await resolveOrchestrator();
     const requestId = randomUUID();
     const ctx = orchestrator.createRequestContext({ requestId, actor });
     const result = await orchestrator.execute({
@@ -119,4 +133,4 @@ export function createGraphqlHandlers(resolveOrchestrator: () => Orchestrator): 
   return { GET, POST };
 }
 
-export const { GET, POST } = createGraphqlHandlers(getOrchestrator);
+export const { GET, POST } = createGraphqlHandlers(getStartedOrchestrator);
