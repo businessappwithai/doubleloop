@@ -117,6 +117,11 @@ phases/finalize.ts    ← Phases IV/V: build → db → test → deploy → laun
 subagents/claude.ts   ← THE ONLY place `claude` is spawned (plan mode, subscription vs api-key auth)
 subagents/gemini.ts   ← Gemini client
 subagents/pi.ts       ← pi.dev runner seam: real pi SDK when installed, else LocalSubagentRunner
+smoke.ts              ← post-launch smoke check: probes the generated app's own
+                        declared API routes (discovered from src/routes/api/*)
+                        and fails a route that answers with an HTML document —
+                        i.e. one that is declared but never mounted, the failure
+                        a "/ returned 200" readiness probe cannot see
 npm.ts                ← workspace dependency installs: per-directory lock (the
                         fleet builds in ONE directory in parallel), retry with
                         --prefer-online when npm's cached metadata is stale, and
@@ -469,7 +474,16 @@ Real, verified, and worth knowing before you trust a command or a doc:
      failure it repairs via `runTestAuthorSubagent` (max
      `MAX_TEST_AUTHOR_ROUNDS`) rather than skipping to deploy. The supervisor
      may not override a run in which zero tests executed.
-9. `pnpm install` has not been run in a fresh clone — `node_modules/` is
+9. **Green unit tests do not mean the generated app runs.** A completed run once
+   reported 21/21 modules PASSED, 1296 passing tests and a clean `tsc --noEmit`
+   for an application that could not serve a single request: its GraphQL route
+   was never mounted, its migration runner read a ledger table nothing had
+   created, and five resolvers rejected the Relay global ids their own client
+   sends. Each unit was correct in isolation. `orchestrator/smoke.ts` now probes
+   the launched app's declared API routes and is the check that catches this
+   class; when changing the deploy/launch path, keep it. Assume nothing about a
+   generated app until it has been exercised over HTTP.
+10. `pnpm install` has not been run in a fresh clone — `node_modules/` is
    absent. Install before typechecking or testing anything.
 
 ---
