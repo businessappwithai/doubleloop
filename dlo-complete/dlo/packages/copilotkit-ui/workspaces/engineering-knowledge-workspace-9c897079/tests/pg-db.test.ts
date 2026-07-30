@@ -1,9 +1,14 @@
 // tests/pg-db.test.ts — module m5 (Ports and adapters). Covers the real Db adapter (pg-db.ts),
 // the ONLY file allowed to import "pg" (Database.md "Connection strategy"). "pg" is fully mocked
 // with vi.mock so no test ever opens a socket: MockPool records the options it was constructed
-// with and the "connect" listener pg-db.ts registers, and MockPoolClient records every query
-// issued against a pinned connection so BEGIN/SAVEPOINT/COMMIT/ROLLBACK sequencing and the
-// client-release-on-both-paths contract are directly assertable.
+// with, and MockPoolClient records every query issued against a pinned connection so
+// BEGIN/SAVEPOINT/COMMIT/ROLLBACK sequencing and the client-release-on-both-paths contract are
+// directly assertable.
+//
+// Session settings are applied in `PgDb.acquire()`, not on the pool's "connect" event, so every
+// checkout in these tests really does issue the five configuration statements first. `makeClient`
+// therefore answers the version probe with a supported version by default, and `sqlCalls` strips
+// the configuration prefix so each test asserts only the SQL it is about.
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { ConfigError, ValidationError } from "../src/core/errors";
 import type { AppConfig } from "../src/config/config";
@@ -18,7 +23,7 @@ vi.mock("pg", () => {
   class MockPool {
     static instances: MockPool[] = [];
     options: Record<string, unknown>;
-    connectHandler: ((client: MockPoolClient) => void) | undefined;
+    listeners: Record<string, Array<(arg: never) => void>> = {};
     query = vi.fn(async () => ({ rows: [], rowCount: 0 }));
     connect = vi.fn(async () => new MockPoolClient());
     end = vi.fn(async () => undefined);
@@ -28,10 +33,8 @@ vi.mock("pg", () => {
       MockPool.instances.push(this);
     }
 
-    on(event: string, handler: (client: MockPoolClient) => void): this {
-      if (event === "connect") {
-        this.connectHandler = handler;
-      }
+    on(event: string, handler: (arg: never) => void): this {
+      (this.listeners[event] ??= []).push(handler);
       return this;
     }
   }
@@ -49,7 +52,7 @@ interface MockPoolClientLike {
 
 interface MockPoolInstance {
   options: Record<string, unknown>;
-  connectHandler: ((client: MockPoolClientLike) => void) | undefined;
+  listeners: Record<string, Array<(arg: never) => void>>;
   query: ReturnType<typeof vi.fn>;
   connect: ReturnType<typeof vi.fn>;
   end: ReturnType<typeof vi.fn>;
@@ -116,11 +119,35 @@ function createDb(
   return { db, config, pool: latestPool(), logger };
 }
 
-function makeClient(): MockPoolClientLike {
+/** The five statements `configureConnection` issues on every physical connection, in order. */
+const CONFIG_SQL: readonly string[] = [
+  "SET statement_timeout = 10000",
+  "SET idle_in_transaction_session_timeout = 15000",
+  "SET lock_timeout = 3000",
+  "SET search_path = public",
+  "SELECT current_setting('server_version_num') AS version_num",
+];
+
+/**
+ * A pooled client that reports a supported server version, so acquisition succeeds and each test
+ * can assert the SQL it actually cares about. Override `query` to model a failing connection.
+ */
+function makeClient(versionNum = "170000"): MockPoolClientLike {
   return {
-    query: vi.fn(async () => ({ rows: [], rowCount: 0 })),
+    query: vi.fn(async (sql: string) =>
+      sql.startsWith("SELECT current_setting")
+        ? { rows: [{ version_num: versionNum }], rowCount: 1 }
+        : { rows: [], rowCount: 0 },
+    ),
     release: vi.fn(),
   };
+}
+
+/** The SQL a client saw, with the connection-configuration prefix removed. */
+function sqlCalls(client: MockPoolClientLike): string[] {
+  return client.query.mock.calls
+    .map((call) => call[0] as string)
+    .filter((sql) => !CONFIG_SQL.includes(sql));
 }
 
 beforeEach(() => {
@@ -216,58 +243,176 @@ describe("PgDb constructor", () => {
     expect(pool.options["ssl"]).toEqual({ rejectUnauthorized: true });
   });
 
-  test("registers exactly one 'connect' handler on the pool", () => {
+  test("registers a pool 'error' listener so an idle-client error cannot kill the process", () => {
     const { pool } = createDb();
-    expect(pool.connectHandler).toBeTypeOf("function");
+    expect(pool.listeners["error"]).toHaveLength(1);
   });
 
-  test("a healthy connection is configured and never released", async () => {
-    const { pool, logger } = createDb();
-    const client = makeClient();
-    client.query.mockImplementation(async (sql: string) =>
-      sql.startsWith("SELECT current_setting") ? { rows: [{ version_num: "170000" }], rowCount: 1 } : { rows: [], rowCount: 0 },
-    );
-
-    pool.connectHandler?.(client);
-    await flushMicrotasks();
-
-    expect(client.query).toHaveBeenCalledWith("SET statement_timeout = 10000");
-    expect(client.release).not.toHaveBeenCalled();
-    expect((logger as Logger & { errorCalls: unknown[] }).errorCalls).toEqual([]);
-  });
-
-  test("releases the connection with the error and logs when the version guard fails", async () => {
+  test("logs an idle-client error instead of rethrowing it", () => {
     const { pool, logger } = createDb() as ReturnType<typeof createDb> & {
       logger: Logger & { errorCalls: Array<{ msg: string; fields: Record<string, unknown> | undefined }> };
     };
-    const client = makeClient();
-    client.query.mockImplementation(async (sql: string) =>
-      sql.startsWith("SELECT current_setting") ? { rows: [{ version_num: "160000" }], rowCount: 1 } : { rows: [], rowCount: 0 },
-    );
 
-    pool.connectHandler?.(client);
-    await flushMicrotasks();
+    const onError = pool.listeners["error"]?.[0] as unknown as (err: Error) => void;
+    expect(() => onError(new Error("terminated"))).not.toThrow();
+
+    expect(logger.errorCalls).toHaveLength(1);
+    expect(logger.errorCalls[0]?.msg).toBe("db.idleClientError");
+    expect(logger.errorCalls[0]?.fields?.["message"]).toBe("terminated");
+  });
+
+  test("does not register a 'connect' listener — configuration happens at acquisition", () => {
+    const { pool } = createDb();
+    expect(pool.listeners["connect"]).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Connection configuration at acquisition
+//
+// This block is the regression guard for a crash, not a style preference. Configuration used to
+// run fire-and-forget on the pool's "connect" event, which cannot be awaited: `pg` handed the
+// client to its caller while `configureConnection` was still in flight, and the later rejection
+// called `client.release(err)` on a client the caller had already released. `pg-pool`'s
+// `throwOnDoubleRelease` then threw from inside a promise callback — an unhandled rejection that
+// killed Node. Against a PostgreSQL 16 server the version guard fails on every connection, so the
+// server died on its first query.
+// ---------------------------------------------------------------------------
+
+describe("PgDb connection configuration", () => {
+  test("applies every session setting before the caller's first statement", async () => {
+    const { db, pool } = createDb();
+    const client = makeClient();
+    pool.connect.mockResolvedValueOnce(client);
+
+    await db.query("SELECT 1");
+
+    expect(client.query.mock.calls.slice(0, 5).map((call) => call[0])).toEqual(CONFIG_SQL);
+    expect(client.query.mock.calls[5]?.[0]).toBe("SELECT 1");
+  });
+
+  test("configures a physical connection once, not on every checkout", async () => {
+    const { db, pool } = createDb();
+    const client = makeClient();
+    pool.connect.mockResolvedValue(client);
+
+    await db.query("SELECT 1");
+    await db.query("SELECT 2");
+
+    const configureCount = client.query.mock.calls.filter(
+      (call) => call[0] === "SET statement_timeout = 10000",
+    ).length;
+    expect(configureCount).toBe(1);
+    expect(sqlCalls(client)).toEqual(["SELECT 1", "SELECT 2"]);
+  });
+
+  test("configures each distinct physical connection", async () => {
+    const { db, pool } = createDb();
+    const first = makeClient();
+    const second = makeClient();
+    pool.connect.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+
+    await db.query("SELECT 1");
+    await db.query("SELECT 2");
+
+    expect(first.query.mock.calls[0]?.[0]).toBe("SET statement_timeout = 10000");
+    expect(second.query.mock.calls[0]?.[0]).toBe("SET statement_timeout = 10000");
+  });
+
+  test("rejects the caller with ConfigError when the server predates PostgreSQL 17", async () => {
+    const { db, pool } = createDb();
+    const client = makeClient("160013");
+    pool.connect.mockResolvedValueOnce(client);
+
+    await expect(db.query("SELECT 1")).rejects.toBeInstanceOf(ConfigError);
+    await expect(db.query("SELECT 1").catch((e: ConfigError) => e.code)).resolves.toBe(
+      "db.unsupportedVersion",
+    );
+  });
+
+  test("releases the bad connection exactly once, passing the error so pg destroys it", async () => {
+    const { db, pool } = createDb();
+    const client = makeClient("160013");
+    pool.connect.mockResolvedValueOnce(client);
+
+    await expect(db.query("SELECT 1")).rejects.toThrow(ConfigError);
 
     expect(client.release).toHaveBeenCalledTimes(1);
     expect(client.release.mock.calls[0]?.[0]).toBeInstanceOf(ConfigError);
-    expect(logger.errorCalls).toHaveLength(1);
-    expect(logger.errorCalls[0]?.msg).toBe("db.connectionConfigFailed");
   });
 
-  test("releases the connection with the error when a session-setting query itself fails", async () => {
-    const { pool, logger } = createDb() as ReturnType<typeof createDb> & {
+  test("never issues the caller's statement on a connection that failed configuration", async () => {
+    const { db, pool } = createDb();
+    const client = makeClient("160013");
+    pool.connect.mockResolvedValueOnce(client);
+
+    await expect(db.query("SELECT 1")).rejects.toThrow(ConfigError);
+
+    expect(sqlCalls(client)).toEqual([]);
+  });
+
+  test("logs db.connectionConfigFailed with the error message", async () => {
+    const { db, pool, logger } = createDb() as ReturnType<typeof createDb> & {
+      logger: Logger & { errorCalls: Array<{ msg: string; fields: Record<string, unknown> | undefined }> };
+    };
+    const client = makeClient("160013");
+    pool.connect.mockResolvedValueOnce(client);
+
+    await expect(db.query("SELECT 1")).rejects.toThrow(ConfigError);
+
+    expect(logger.errorCalls).toHaveLength(1);
+    expect(logger.errorCalls[0]?.msg).toBe("db.connectionConfigFailed");
+    expect(String(logger.errorCalls[0]?.fields?.["message"])).toContain("PostgreSQL 17.0 or newer");
+  });
+
+  test("rejects the caller when a session-setting query itself fails, releasing once", async () => {
+    const { db, pool, logger } = createDb() as ReturnType<typeof createDb> & {
       logger: Logger & { errorCalls: Array<{ msg: string; fields: Record<string, unknown> | undefined }> };
     };
     const client = makeClient();
     const failure = new Error("connection lost");
     client.query.mockRejectedValue(failure);
+    pool.connect.mockResolvedValueOnce(client);
 
-    pool.connectHandler?.(client);
-    await flushMicrotasks();
+    await expect(db.query("SELECT 1")).rejects.toBe(failure);
 
     expect(client.release).toHaveBeenCalledTimes(1);
     expect(client.release.mock.calls[0]?.[0]).toBe(failure);
     expect(logger.errorCalls[0]?.fields?.["message"]).toBe("connection lost");
+  });
+
+  test("a failed acquisition does not poison later checkouts on a healthy connection", async () => {
+    const { db, pool } = createDb();
+    const bad = makeClient("160013");
+    const good = makeClient();
+    pool.connect.mockResolvedValueOnce(bad).mockResolvedValueOnce(good);
+
+    await expect(db.query("SELECT 1")).rejects.toThrow(ConfigError);
+    await expect(db.query("SELECT 2")).resolves.toEqual({ rows: [], rowCount: 0 });
+
+    expect(sqlCalls(good)).toEqual(["SELECT 2"]);
+  });
+
+  test("configuration also runs for withTransaction, before BEGIN", async () => {
+    const { db, pool } = createDb();
+    const client = makeClient();
+    pool.connect.mockResolvedValueOnce(client);
+
+    await db.withTransaction(async () => "ok");
+
+    expect(client.query.mock.calls.slice(0, 5).map((call) => call[0])).toEqual(CONFIG_SQL);
+    expect(sqlCalls(client)).toEqual(["BEGIN", "COMMIT"]);
+  });
+
+  test("withTransaction rejects and never BEGINs when configuration fails", async () => {
+    const { db, pool } = createDb();
+    const client = makeClient("160013");
+    pool.connect.mockResolvedValueOnce(client);
+
+    await expect(db.withTransaction(async () => "ok")).rejects.toThrow(ConfigError);
+
+    expect(sqlCalls(client)).toEqual([]);
+    expect(client.release).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -276,19 +421,63 @@ describe("PgDb constructor", () => {
 // ---------------------------------------------------------------------------
 
 describe("PgDb.query", () => {
-  test("delegates to the pool with sql and params, returning rows and rowCount", async () => {
+  test("issues sql and params on a pooled connection, returning rows and rowCount", async () => {
     const { db, pool } = createDb();
-    pool.query.mockResolvedValueOnce({ rows: [{ id: 1 }], rowCount: 1 });
+    const client = makeClient();
+    client.query.mockImplementation(async (sql: string) => {
+      if (sql.startsWith("SELECT current_setting")) {
+        return { rows: [{ version_num: "170000" }], rowCount: 1 };
+      }
+      return { rows: [{ id: 1 }], rowCount: 1 };
+    });
+    pool.connect.mockResolvedValueOnce(client);
 
     const result = await db.query<{ id: number }>("SELECT * FROM t WHERE id = $1", [1]);
 
-    expect(pool.query).toHaveBeenCalledWith("SELECT * FROM t WHERE id = $1", [1]);
+    expect(client.query).toHaveBeenCalledWith("SELECT * FROM t WHERE id = $1", [1]);
     expect(result).toEqual({ rows: [{ id: 1 }], rowCount: 1 });
+  });
+
+  test("releases the connection back to the pool after a successful query", async () => {
+    const { db, pool } = createDb();
+    const client = makeClient();
+    pool.connect.mockResolvedValueOnce(client);
+
+    await db.query("SELECT 1");
+
+    expect(client.release).toHaveBeenCalledTimes(1);
+    expect(client.release).toHaveBeenCalledWith();
+  });
+
+  test("releases the connection even when the query itself rejects", async () => {
+    const { db, pool } = createDb();
+    const client = makeClient();
+    const failure = new Error("syntax error");
+    client.query.mockImplementation(async (sql: string) => {
+      if (sql.startsWith("SELECT current_setting")) {
+        return { rows: [{ version_num: "170000" }], rowCount: 1 };
+      }
+      if (sql.startsWith("SET ")) {
+        return { rows: [], rowCount: 0 };
+      }
+      throw failure;
+    });
+    pool.connect.mockResolvedValueOnce(client);
+
+    await expect(db.query("SELECT bad")).rejects.toBe(failure);
+
+    expect(client.release).toHaveBeenCalledTimes(1);
   });
 
   test("defaults rowCount to 0 when the driver reports a nullish rowCount", async () => {
     const { db, pool } = createDb();
-    pool.query.mockResolvedValueOnce({ rows: [], rowCount: null });
+    const client = makeClient();
+    client.query.mockImplementation(async (sql: string) =>
+      sql.startsWith("SELECT current_setting")
+        ? { rows: [{ version_num: "170000" }], rowCount: 1 }
+        : { rows: [], rowCount: null },
+    );
+    pool.connect.mockResolvedValueOnce(client);
 
     const result = await db.query("SELECT 1");
 
@@ -297,13 +486,15 @@ describe("PgDb.query", () => {
 
   test("passes params through as undefined when none are given", async () => {
     const { db, pool } = createDb();
+    const client = makeClient();
+    pool.connect.mockResolvedValueOnce(client);
 
     await db.query("SELECT 1");
 
-    expect(pool.query).toHaveBeenCalledWith("SELECT 1", undefined);
+    expect(client.query).toHaveBeenCalledWith("SELECT 1", undefined);
   });
 
-  test("rejects with ValidationError before reaching the pool when sql has a non-numeric placeholder", async () => {
+  test("rejects with ValidationError before checking out a connection when sql has a non-numeric placeholder", async () => {
     const { db, pool } = createDb();
 
     try {
@@ -313,19 +504,20 @@ describe("PgDb.query", () => {
       expect(err).toBeInstanceOf(ValidationError);
       expect((err as ValidationError).details["reason"]).toBe("db.invalidPlaceholder");
     }
-    expect(pool.query).not.toHaveBeenCalled();
+    expect(pool.connect).not.toHaveBeenCalled();
   });
 
   test("rejects with ValidationError when a '$' is the final character", async () => {
     const { db, pool } = createDb();
 
     await expect(db.query("SELECT '$'")).rejects.toThrow(ValidationError);
-    expect(pool.query).not.toHaveBeenCalled();
+    expect(pool.connect).not.toHaveBeenCalled();
   });
 
   test("accepts a query using only $1..$n positional placeholders", async () => {
     const { db, pool } = createDb();
-    pool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    const client = makeClient();
+    pool.connect.mockResolvedValueOnce(client);
 
     await expect(db.query("SELECT * FROM t WHERE a = $1 AND b = $2", [1, 2])).resolves.toEqual({
       rows: [],
@@ -347,7 +539,7 @@ describe("PgDb.withTransaction", () => {
     const result = await db.withTransaction(async () => 42);
 
     expect(pool.connect).toHaveBeenCalledTimes(1);
-    expect(client.query.mock.calls.map((call) => call[0])).toEqual(["BEGIN", "COMMIT"]);
+    expect(sqlCalls(client)).toEqual(["BEGIN", "COMMIT"]);
     expect(client.release).toHaveBeenCalledTimes(1);
     expect(client.release).toHaveBeenCalledWith();
     expect(result).toBe(42);
@@ -360,7 +552,7 @@ describe("PgDb.withTransaction", () => {
 
     await db.withTransaction(async () => "ok", { isolation: "serializable", readOnly: true });
 
-    expect(client.query.mock.calls[0]?.[0]).toBe("BEGIN ISOLATION LEVEL SERIALIZABLE, READ ONLY");
+    expect(sqlCalls(client)[0]).toBe("BEGIN ISOLATION LEVEL SERIALIZABLE, READ ONLY");
   });
 
   test("builds BEGIN with only an isolation level when readOnly is omitted", async () => {
@@ -370,7 +562,7 @@ describe("PgDb.withTransaction", () => {
 
     await db.withTransaction(async () => "ok", { isolation: "repeatable read" });
 
-    expect(client.query.mock.calls[0]?.[0]).toBe("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    expect(sqlCalls(client)[0]).toBe("BEGIN ISOLATION LEVEL REPEATABLE READ");
   });
 
   test("builds BEGIN with only READ WRITE when readOnly is explicitly false", async () => {
@@ -380,7 +572,7 @@ describe("PgDb.withTransaction", () => {
 
     await db.withTransaction(async () => "ok", { readOnly: false });
 
-    expect(client.query.mock.calls[0]?.[0]).toBe("BEGIN READ WRITE");
+    expect(sqlCalls(client)[0]).toBe("BEGIN READ WRITE");
   });
 
   test("builds a bare BEGIN when no opts are given", async () => {
@@ -390,7 +582,7 @@ describe("PgDb.withTransaction", () => {
 
     await db.withTransaction(async () => "ok");
 
-    expect(client.query.mock.calls[0]?.[0]).toBe("BEGIN");
+    expect(sqlCalls(client)[0]).toBe("BEGIN");
   });
 
   test("rolls back and rethrows the original error on rejection, still releasing the connection", async () => {
@@ -401,7 +593,7 @@ describe("PgDb.withTransaction", () => {
 
     await expect(db.withTransaction(async () => Promise.reject(failure))).rejects.toBe(failure);
 
-    expect(client.query.mock.calls.map((call) => call[0])).toEqual(["BEGIN", "ROLLBACK"]);
+    expect(sqlCalls(client)).toEqual(["BEGIN", "ROLLBACK"]);
     expect(client.release).toHaveBeenCalledTimes(1);
   });
 
@@ -411,6 +603,9 @@ describe("PgDb.withTransaction", () => {
     pool.connect.mockResolvedValueOnce(client);
     const failure = new Error("boom");
     client.query.mockImplementation(async (sql: string) => {
+      if (sql.startsWith("SELECT current_setting")) {
+        return { rows: [{ version_num: "170000" }], rowCount: 1 };
+      }
       if (sql === "ROLLBACK") {
         throw new Error("connection already closed");
       }
@@ -432,7 +627,7 @@ describe("PgDb.withTransaction", () => {
     });
 
     expect(pool.connect).toHaveBeenCalledTimes(1);
-    expect(client.query.mock.calls.map((call) => call[0])).toEqual([
+    expect(sqlCalls(client)).toEqual([
       "BEGIN",
       "SAVEPOINT sp_1",
       "RELEASE SAVEPOINT sp_1",
@@ -452,7 +647,7 @@ describe("PgDb.withTransaction", () => {
       });
     });
 
-    expect(client.query.mock.calls.map((call) => call[0])).toEqual([
+    expect(sqlCalls(client)).toEqual([
       "BEGIN",
       "SAVEPOINT sp_1",
       "SAVEPOINT sp_2",
@@ -477,7 +672,7 @@ describe("PgDb.withTransaction", () => {
       expect((err as ValidationError).details["reason"]).toBe("db.nestedTransactionOptions");
     }
 
-    expect(client.query.mock.calls.map((call) => call[0])).toEqual(["BEGIN", "ROLLBACK"]);
+    expect(sqlCalls(client)).toEqual(["BEGIN", "ROLLBACK"]);
   });
 
   test("a nested failure rolls back to its SAVEPOINT, then the outer transaction rolls back too", async () => {
@@ -492,7 +687,7 @@ describe("PgDb.withTransaction", () => {
       }),
     ).rejects.toBe(failure);
 
-    expect(client.query.mock.calls.map((call) => call[0])).toEqual([
+    expect(sqlCalls(client)).toEqual([
       "BEGIN",
       "SAVEPOINT sp_1",
       "ROLLBACK TO SAVEPOINT sp_1",
@@ -507,6 +702,9 @@ describe("PgDb.withTransaction", () => {
     pool.connect.mockResolvedValueOnce(client);
     const failure = new Error("inner boom");
     client.query.mockImplementation(async (sql: string) => {
+      if (sql.startsWith("SELECT current_setting")) {
+        return { rows: [{ version_num: "170000" }], rowCount: 1 };
+      }
       if (sql === "ROLLBACK TO SAVEPOINT sp_1") {
         throw new Error("connection already closed");
       }
@@ -524,9 +722,12 @@ describe("PgDb.withTransaction", () => {
     const { db, pool } = createDb();
     const client = makeClient();
     pool.connect.mockResolvedValueOnce(client);
-    client.query.mockImplementation(async (sql: string) =>
-      sql.startsWith("SELECT") ? { rows: [{ n: 1 }], rowCount: 1 } : { rows: [], rowCount: 0 },
-    );
+    client.query.mockImplementation(async (sql: string) => {
+      if (sql.startsWith("SELECT current_setting")) {
+        return { rows: [{ version_num: "170000" }], rowCount: 1 };
+      }
+      return sql.startsWith("SELECT") ? { rows: [{ n: 1 }], rowCount: 1 } : { rows: [], rowCount: 0 };
+    });
 
     await db.withTransaction(async (tx) => {
       await tx.withTransaction(async (tx2) => {

@@ -2,15 +2,22 @@
 // "Connection strategy": "A single pg.Pool ... Nothing else in the codebase constructs a pool or a
 // client."). Two non-obvious things live here:
 //
-// 1. Session settings and the PostgreSQL-17 version guard run once per *physical* connection, on
-//    the pool's `connect` event — not on every checkout — because that event fires exactly once
-//    when a new socket finishes authenticating (Database.md "Connection strategy"). `configureConnection`
-//    is exported on its own so it can be unit-tested directly instead of through the pool's
-//    fire-and-forget event dispatch, which does not await async listeners. When it rejects (an
-//    unsupported server version, or a session-setting query itself failing), the handler calls
-//    `client.release(err)` — passing a truthy value tells `pg` to destroy this connection instead
-//    of returning it to the idle pool, which is the documented way to reject a bad connection from
-//    inside a `connect` listener.
+// 1. Session settings and the PostgreSQL-17 version guard run once per *physical* connection, in
+//    `PgDb.acquire()` — guarded by a `WeakSet` of already-configured clients, so a checkout that
+//    reuses a warm connection costs nothing extra (Database.md "Connection strategy").
+//
+//    They used to run on the pool's `connect` event, and that crashed the whole server process.
+//    `connect` listeners cannot be awaited, so `pg` handed the client to its caller while
+//    `configureConnection` was still in flight; when the configure later rejected, the listener
+//    called `client.release(err)` on a client the caller had *already* released, and `pg-pool`'s
+//    `throwOnDoubleRelease` threw from inside a promise callback — an unhandled rejection that
+//    killed Node. Against a PostgreSQL 16 server the version guard rejects on every single
+//    connection, so the server died on its first query with a stack pointing at `pg-pool`, nothing
+//    about the version. Configure at acquisition instead: the failure reaches the caller as an
+//    ordinary rejection (`ConfigError('db.unsupportedVersion')`, which is the actionable message),
+//    and `acquire` owns the release so it happens exactly once. Passing the error to `release`
+//    still tells `pg` to destroy the connection rather than return a half-configured one to the
+//    idle set. `configureConnection` remains exported so it can be unit-tested directly.
 // 2. `withTransaction` pins one connection for its whole call. A *nested* call (one made from
 //    inside the running `fn`) reuses that same connection and issues a `SAVEPOINT` instead of a
 //    new `BEGIN`, per Database.md — Postgres cannot nest real transactions. `isolation`/`readOnly`
@@ -123,8 +130,15 @@ class PinnedTransactionDb implements Db {
  */
 export class PgDb implements Db {
   private readonly pool: Pool;
+  private readonly logger: Logger;
+  /**
+   * Physical connections whose session settings have already been applied. A `WeakSet` so a client
+   * the pool discards is collectable — this must never keep a dead connection alive.
+   */
+  private readonly configured = new WeakSet<PoolClient>();
 
   constructor(config: AppConfig, logger: Logger) {
+    this.logger = logger;
     this.pool = new Pool({
       connectionString: config.db.url,
       max: config.db.poolMax,
@@ -135,26 +149,60 @@ export class PgDb implements Db {
       ssl: config.db.ssl ? { rejectUnauthorized: true } : false,
     });
 
-    this.pool.on("connect", (client) => {
-      void configureConnection(client).catch((err: unknown) => {
-        const error = err instanceof Error ? err : new Error(String(err));
-        logger.error("db.connectionConfigFailed", { message: error.message });
-        client.release(error);
-      });
+    // An error on an IDLE pooled connection has no caller to reject, and `pg` treats an
+    // unhandled 'error' on the pool as fatal to the process. Log and let the pool discard it.
+    this.pool.on("error", (err: Error) => {
+      this.logger.error("db.idleClientError", { message: err.message });
     });
+  }
+
+  /**
+   * Checks out a connection and guarantees its session settings are applied before the caller
+   * sees it, exactly once per physical connection.
+   *
+   * This deliberately does NOT use `pool.on("connect")`, which is where this used to live and
+   * which crashed the entire server process. That listener cannot be awaited, so `pg` handed the
+   * client to its caller while `configureConnection` was still in flight; when the configure later
+   * rejected, the handler called `client.release(err)` on a client the caller had *already*
+   * released, and `pg-pool`'s `throwOnDoubleRelease` threw from inside a promise callback — an
+   * unhandled rejection that took down Node. Configuring at acquisition instead means the failure
+   * reaches the caller as a normal rejection, and this method owns the release, so it happens
+   * exactly once. Passing the error to `release` still tells `pg` to destroy the connection rather
+   * than return a half-configured one to the idle set.
+   */
+  private async acquire(): Promise<PoolClient> {
+    const client = await this.pool.connect();
+    if (this.configured.has(client)) {
+      return client;
+    }
+    try {
+      await configureConnection(client);
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.logger.error("db.connectionConfigFailed", { message: error.message });
+      client.release(error);
+      throw error;
+    }
+    this.configured.add(client);
+    return client;
   }
 
   async query<TRow>(sql: string, params?: readonly unknown[]): Promise<{ rows: TRow[]; rowCount: number }> {
     assertPositionalSql(sql);
-    const result = await this.pool.query(sql, params ? [...params] : undefined);
-    return { rows: result.rows as TRow[], rowCount: result.rowCount ?? 0 };
+    const client = await this.acquire();
+    try {
+      const result = await client.query(sql, params ? [...params] : undefined);
+      return { rows: result.rows as TRow[], rowCount: result.rowCount ?? 0 };
+    } finally {
+      client.release();
+    }
   }
 
   async withTransaction<T>(
     fn: (tx: Db) => Promise<T>,
     opts?: { isolation?: Isolation; readOnly?: boolean },
   ): Promise<T> {
-    const client = await this.pool.connect();
+    const client = await this.acquire();
     try {
       await client.query(buildBeginSql(opts));
       try {
