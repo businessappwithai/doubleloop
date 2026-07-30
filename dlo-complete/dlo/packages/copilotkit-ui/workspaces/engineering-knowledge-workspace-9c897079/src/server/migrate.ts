@@ -182,6 +182,33 @@ interface SchemaMigrationRow {
 }
 
 /**
+ * Reads the migration ledger, treating an **absent** `schema_migrations` table as "nothing has
+ * been applied yet" rather than an error.
+ *
+ * This is the bootstrap case, and it is not an edge case: the ledger table is itself created by
+ * migration `001`, so on a genuinely fresh database the very first thing `runMigrations` does is
+ * read a table that cannot exist yet. Without this, every new deployment failed on startup with
+ * `relation "schema_migrations" does not exist` and no migration ever ran.
+ *
+ * Existence is checked with `to_regclass` rather than by catching the query's error, so a real
+ * permission or connectivity failure still propagates instead of being silently read as an empty
+ * ledger — which would re-apply every migration. The table's canonical definition stays in `001`;
+ * nothing is created here, so the DDL is never duplicated and cannot drift.
+ */
+async function readAppliedMigrations(db: Db): Promise<readonly SchemaMigrationRow[]> {
+  const { rows: existsRows } = await db.query<{ table_name: string | null }>(
+    "SELECT to_regclass('public.schema_migrations')::text AS table_name",
+  );
+  if (existsRows[0]?.table_name == null) {
+    return [];
+  }
+  const { rows } = await db.query<SchemaMigrationRow>(
+    "SELECT version, name, checksum FROM schema_migrations ORDER BY version",
+  );
+  return rows;
+}
+
+/**
  * Applies every pending migration, one file per transaction, in strict numeric order. Takes
  * {@link MIGRATION_ADVISORY_LOCK_KEY} before reading `schema_migrations` and releases it in a
  * `finally` regardless of outcome. In `checkOnly` mode, returns the plan without opening a
@@ -194,9 +221,7 @@ export async function runMigrations(
 ): Promise<RunMigrationsResult> {
   await db.query("SELECT pg_advisory_lock($1)", [MIGRATION_ADVISORY_LOCK_KEY]);
   try {
-    const { rows } = await db.query<SchemaMigrationRow>(
-      "SELECT version, name, checksum FROM schema_migrations ORDER BY version",
-    );
+    const rows = await readAppliedMigrations(db);
     const plan = planMigrations(files, rows);
 
     if (opts.checkOnly === true) {

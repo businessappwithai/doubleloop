@@ -10,6 +10,8 @@
 // therefore answers the version probe with a supported version by default, and `sqlCalls` strips
 // the configuration prefix so each test asserts only the SQL it is about.
 import { describe, expect, test, vi, beforeEach } from "vitest";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { ConfigError, ValidationError } from "../src/core/errors";
 import type { AppConfig } from "../src/config/config";
 import type { Logger } from "../src/server/ports";
@@ -507,10 +509,137 @@ describe("PgDb.query", () => {
     expect(pool.connect).not.toHaveBeenCalled();
   });
 
-  test("rejects with ValidationError when a '$' is the final character", async () => {
+  test("rejects with ValidationError when a bare '$' is the final character", async () => {
     const { db, pool } = createDb();
 
-    await expect(db.query("SELECT '$'")).rejects.toThrow(ValidationError);
+    await expect(db.query("SELECT a$")).rejects.toThrow(ValidationError);
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
+  test("accepts a '$' inside a single-quoted literal — it is a regex anchor, not a placeholder", async () => {
+    // This is the exact shape every migration's CHECK constraint uses:
+    //   CHECK (checksum ~ '^[0-9a-f]{64}$')
+    const { db, pool } = createDb();
+    const client = makeClient();
+    pool.connect.mockResolvedValueOnce(client);
+
+    await expect(
+      db.query("SELECT * FROM t WHERE checksum ~ '^[0-9a-f]{64}$'"),
+    ).resolves.toEqual({ rows: [], rowCount: 0 });
+  });
+
+  test("handles the '' escape inside a literal without losing track of the quote", async () => {
+    const { db, pool } = createDb();
+    const client = makeClient();
+    pool.connect.mockResolvedValueOnce(client);
+
+    await expect(db.query("SELECT 'it''s $ fine'")).resolves.toEqual({ rows: [], rowCount: 0 });
+  });
+
+  test("rejects an unterminated single-quoted literal rather than skipping the rest", async () => {
+    const { db, pool } = createDb();
+
+    await expect(db.query("SELECT 'unterminated $x")).rejects.toThrow(ValidationError);
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
+  test("accepts a '$' inside a double-quoted identifier", async () => {
+    const { db, pool } = createDb();
+    const client = makeClient();
+    pool.connect.mockResolvedValueOnce(client);
+
+    await expect(db.query('SELECT "odd$column" FROM t')).resolves.toEqual({ rows: [], rowCount: 0 });
+  });
+
+  test("ignores a '$' inside a -- line comment but still checks the line after it", async () => {
+    const { db, pool } = createDb();
+    const client = makeClient();
+    pool.connect.mockResolvedValueOnce(client);
+
+    await expect(db.query("-- costs $5\nSELECT 1")).resolves.toEqual({ rows: [], rowCount: 0 });
+    await expect(db.query("-- costs $5\nSELECT $bad")).rejects.toThrow(ValidationError);
+  });
+
+  test("ignores a '$' inside a nested block comment", async () => {
+    const { db, pool } = createDb();
+    const client = makeClient();
+    pool.connect.mockResolvedValueOnce(client);
+
+    await expect(db.query("/* outer /* inner $x */ still */ SELECT 1")).resolves.toEqual({
+      rows: [],
+      rowCount: 0,
+    });
+  });
+
+  test("rejects an unterminated block comment", async () => {
+    const { db, pool } = createDb();
+
+    await expect(db.query("/* never closed SELECT 1")).rejects.toThrow(ValidationError);
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
+  test("accepts every migration file checked into sql/migrations", async () => {
+    // The guard rejected all seven of them at one point — `$` is the end-of-string anchor in the
+    // CHECK-constraint regexes, and `DO $$ ... $$` is the only conditional CREATE TYPE form — so
+    // no database could be migrated at all. Reading the real files keeps that honest: a new
+    // migration using another legitimate `$` construct fails here rather than in production.
+    const dir = join(process.cwd(), "sql", "migrations");
+    const files = readdirSync(dir).filter((name) => name.endsWith(".sql"));
+    expect(files.length).toBeGreaterThan(0);
+
+    for (const name of files) {
+      const { db, pool } = createDb();
+      pool.connect.mockResolvedValueOnce(makeClient());
+      await expect(db.query(readFileSync(join(dir, name), "utf8"))).resolves.toBeDefined();
+    }
+  });
+
+  test("accepts DDL containing a DO $$ ... $$ block", async () => {
+    // The migration files use `DO $$ BEGIN ... END $$` for conditional CREATE TYPE, which has no
+    // IF NOT EXISTS form. Scanning inside those bodies made every migration fail, so no database
+    // could ever be migrated.
+    const { db, pool } = createDb();
+    const client = makeClient();
+    pool.connect.mockResolvedValueOnce(client);
+
+    await expect(
+      db.query("DO $$ BEGIN IF NOT EXISTS (SELECT 1) THEN CREATE TYPE t AS ENUM ('a'); END IF; END $$"),
+    ).resolves.toEqual({ rows: [], rowCount: 0 });
+  });
+
+  test("accepts a tagged dollar-quoted body", async () => {
+    const { db, pool } = createDb();
+    const client = makeClient();
+    pool.connect.mockResolvedValueOnce(client);
+
+    await expect(
+      db.query("CREATE FUNCTION f() RETURNS void AS $body$ SELECT $notaparam $body$ LANGUAGE sql"),
+    ).resolves.toEqual({ rows: [], rowCount: 0 });
+  });
+
+  test("still validates placeholders OUTSIDE a dollar-quoted body", async () => {
+    const { db, pool } = createDb();
+
+    await expect(db.query("SELECT * FROM t WHERE a = $bad AND b = $$ok$$")).rejects.toThrow(
+      ValidationError,
+    );
+    expect(pool.connect).not.toHaveBeenCalled();
+  });
+
+  test("still accepts $1..$n alongside a dollar-quoted body", async () => {
+    const { db, pool } = createDb();
+    const client = makeClient();
+    pool.connect.mockResolvedValueOnce(client);
+
+    await expect(
+      db.query("SELECT * FROM t WHERE a = $1 AND note = $$literal$$", [1]),
+    ).resolves.toEqual({ rows: [], rowCount: 0 });
+  });
+
+  test("rejects an unbalanced dollar-quote opener rather than treating the rest as quoted", async () => {
+    const { db, pool } = createDb();
+
+    await expect(db.query("SELECT $$ unterminated")).rejects.toThrow(ValidationError);
     expect(pool.connect).not.toHaveBeenCalled();
   });
 

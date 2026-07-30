@@ -28,11 +28,31 @@ interface AppliedRow {
  * A FakeDb pre-wired with harmless catch-all responses for the advisory lock, every migration
  * file's own SQL, and the bookkeeping INSERT, plus a specific response for the ledger SELECT
  * (returning `appliedRows`) — so each test only has to override what it specifically cares about.
+ *
+ * The `to_regclass` answer models an **existing** ledger table, which is the state of every
+ * database that has been migrated even once. `makeFreshDb` below models the other case.
  */
 function makeDb(appliedRows: readonly AppliedRow[] = []): FakeDb {
   const db = createFakeDb();
   db.when(/.*/, { rows: [], rowCount: 0 });
+  db.when(/to_regclass/, { rows: [{ table_name: "schema_migrations" }] });
   db.when(/FROM schema_migrations/, { rows: [...appliedRows] });
+  return db;
+}
+
+/**
+ * A FakeDb modelling a genuinely fresh database: `schema_migrations` does not exist yet, because
+ * migration 001 is what creates it. `to_regclass` returns a NULL row, and the ledger SELECT is
+ * wired to throw so any attempt to read the missing table is a hard test failure rather than a
+ * silently empty result.
+ */
+function makeFreshDb(): FakeDb {
+  const db = createFakeDb();
+  db.when(/.*/, { rows: [], rowCount: 0 });
+  db.when(/to_regclass/, { rows: [{ table_name: null }] });
+  db.when(/SELECT version, name, checksum FROM schema_migrations/, () => {
+    throw new Error('relation "schema_migrations" does not exist');
+  });
   return db;
 }
 
@@ -232,5 +252,85 @@ describe("runMigrations", () => {
       { version: 1, name: "a", durationMs: 10 },
       { version: 2, name: "b", durationMs: 40 },
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bootstrapping a fresh database
+//
+// The ledger table is created BY migration 001, so on a brand-new database the first thing
+// runMigrations does is read a table that cannot exist yet. Before this was handled, every fresh
+// deployment failed on startup with `relation "schema_migrations" does not exist` and no
+// migration ever ran — the app came up and answered every query against an empty schema.
+// ---------------------------------------------------------------------------
+
+describe("runMigrations on a database with no schema_migrations table", () => {
+  test("treats the absent ledger as an empty one and applies every file", async () => {
+    const db = makeFreshDb();
+    const clock = createFakeClock();
+    const files = makeFiles(3);
+
+    const result = await runMigrations(db, files, { clock });
+
+    expect(result.applied.map((entry) => entry.version)).toEqual([1, 2, 3]);
+    expect(result.pending).toEqual([]);
+  });
+
+  test("never reads the missing table", async () => {
+    const db = makeFreshDb();
+    const clock = createFakeClock();
+
+    await runMigrations(db, makeFiles(1), { clock });
+
+    expect(db.calls.some((call) => /SELECT version, name, checksum FROM schema_migrations/.test(call.sql))).toBe(
+      false,
+    );
+  });
+
+  test("reports every file as pending in checkOnly mode instead of throwing", async () => {
+    const db = makeFreshDb();
+    const clock = createFakeClock();
+    const files = makeFiles(2);
+
+    const result = await runMigrations(db, files, { clock, checkOnly: true });
+
+    expect(result.applied).toEqual([]);
+    expect(result.pending.map((entry) => entry.version)).toEqual([1, 2]);
+  });
+
+  test("still releases the advisory lock", async () => {
+    const db = makeFreshDb();
+    const clock = createFakeClock();
+
+    await runMigrations(db, makeFiles(1), { clock });
+
+    expect(lockCalls(db)).toEqual([
+      "SELECT pg_advisory_lock($1)",
+      "SELECT pg_advisory_unlock($1)",
+    ]);
+  });
+
+  test("propagates a failing existence probe rather than assuming an empty ledger", async () => {
+    // A permission or connectivity failure must NOT be read as "nothing applied" — that would
+    // re-apply every migration against a fully migrated database.
+    const db = createFakeDb();
+    db.when(/.*/, { rows: [], rowCount: 0 });
+    const failure = new Error("permission denied for schema public");
+    db.when(/to_regclass/, () => {
+      throw failure;
+    });
+    const clock = createFakeClock();
+
+    await expect(runMigrations(db, makeFiles(1), { clock })).rejects.toBe(failure);
+  });
+
+  test("an existence probe returning no rows at all is treated as absent, not as a crash", async () => {
+    const db = createFakeDb();
+    db.when(/.*/, { rows: [], rowCount: 0 });
+    const clock = createFakeClock();
+
+    const result = await runMigrations(db, makeFiles(1), { clock });
+
+    expect(result.applied.map((entry) => entry.version)).toEqual([1]);
   });
 });

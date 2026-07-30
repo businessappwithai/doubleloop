@@ -59,14 +59,113 @@ export async function configureConnection(client: Pick<PoolClient, "query">): Pr
   }
 }
 
-/** Any `$` in `sql` not immediately followed by a digit is not a `$n` placeholder. */
-function assertPositionalSql(sql: string): void {
-  for (let index = sql.indexOf("$"); index !== -1; index = sql.indexOf("$", index + 1)) {
-    if (!/^\d/.test(sql.slice(index + 1))) {
-      throw new ValidationError("SQL must use only $1..$n positional placeholders", {
-        details: { reason: "db.invalidPlaceholder", sql },
-      });
+/**
+ * Matches a dollar-quoted string opener — `$$` or `$tag$` — exactly as PostgreSQL defines one:
+ * the tag is optional, starts with a letter or underscore, and contains no `$`.
+ */
+const DOLLAR_QUOTE_OPEN = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/;
+
+/**
+ * Reports whether `sql` contains a `$` that is not part of a `$n` positional placeholder,
+ * considering only positions where a placeholder could actually appear.
+ *
+ * A naive scan over the whole string cannot do this, and the failure was not hypothetical: every
+ * migration in `sql/migrations/` was rejected, so no database could be migrated at all. Two
+ * legitimate constructs put a bare `$` into perfectly valid SQL —
+ *
+ *   - a `CHECK (checksum ~ '^[0-9a-f]{64}$')` regex, where `$` is the end-of-string anchor inside
+ *     an ordinary single-quoted literal, and
+ *   - a `DO $$ BEGIN ... END $$` block, the only way to write a conditional `CREATE TYPE`, which
+ *     has no `IF NOT EXISTS` form.
+ *
+ * So this walks the statement and skips the regions where PostgreSQL itself would not read a
+ * parameter: single-quoted literals (with the `''` escape), double-quoted identifiers, `--` line
+ * comments, `/* *\/` block comments (which nest in PostgreSQL), and dollar-quoted bodies. An
+ * *unterminated* region is treated as a violation rather than being skipped, so genuinely
+ * malformed SQL is still rejected instead of hiding the rest of the statement from the check.
+ */
+function hasInvalidPlaceholder(sql: string): boolean {
+  let i = 0;
+  while (i < sql.length) {
+    const ch = sql[i];
+
+    if (ch === "'" || ch === '"') {
+      const quote = ch;
+      i += 1;
+      let closed = false;
+      while (i < sql.length) {
+        if (sql[i] === quote) {
+          if (sql[i + 1] === quote) {
+            i += 2; // '' / "" is an escaped quote, not the end of the literal.
+            continue;
+          }
+          i += 1;
+          closed = true;
+          break;
+        }
+        i += 1;
+      }
+      if (!closed) {
+        return true; // Unterminated literal — malformed, not a licence to stop checking.
+      }
+      continue;
     }
+
+    if (ch === "-" && sql[i + 1] === "-") {
+      const newline = sql.indexOf("\n", i);
+      i = newline === -1 ? sql.length : newline + 1;
+      continue;
+    }
+
+    if (ch === "/" && sql[i + 1] === "*") {
+      let depth = 1;
+      i += 2;
+      while (i < sql.length && depth > 0) {
+        if (sql[i] === "/" && sql[i + 1] === "*") {
+          depth += 1;
+          i += 2;
+        } else if (sql[i] === "*" && sql[i + 1] === "/") {
+          depth -= 1;
+          i += 2;
+        } else {
+          i += 1;
+        }
+      }
+      if (depth > 0) {
+        return true; // Unterminated block comment.
+      }
+      continue;
+    }
+
+    if (ch === "$") {
+      const opener = DOLLAR_QUOTE_OPEN.exec(sql.slice(i));
+      if (opener) {
+        const delimiter = opener[0];
+        const closerIndex = sql.indexOf(delimiter, i + delimiter.length);
+        if (closerIndex === -1) {
+          return true; // Unterminated dollar-quoted body.
+        }
+        i = closerIndex + delimiter.length;
+        continue;
+      }
+      if (!/^\d/.test(sql.slice(i + 1))) {
+        return true;
+      }
+      i += 1;
+      continue;
+    }
+
+    i += 1;
+  }
+  return false;
+}
+
+/** Rejects any `$` that is not a `$n` placeholder — see {@link hasInvalidPlaceholder}. */
+function assertPositionalSql(sql: string): void {
+  if (hasInvalidPlaceholder(sql)) {
+    throw new ValidationError("SQL must use only $1..$n positional placeholders", {
+      details: { reason: "db.invalidPlaceholder", sql },
+    });
   }
 }
 
