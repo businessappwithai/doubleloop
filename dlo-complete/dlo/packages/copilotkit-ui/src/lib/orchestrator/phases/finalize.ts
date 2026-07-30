@@ -25,6 +25,7 @@ import {
   writeWorkspaceMarkdown,
 } from "../state";
 import { spawnClaudeAgent, claudeAuthFromConfig, claudePermissionModeFromConfig, BUILDER_ALLOWED_TOOLS } from "../subagents/claude";
+import { buildSmokeTargets, runSmokeCheck, type FetchLike, type SmokeReport } from "../smoke";
 import { installDependencies } from "../npm";
 import { appendLog } from "../logStore";
 
@@ -1220,16 +1221,44 @@ export async function runDeployBackground(pipelineId: string, hasPermission: boo
       } catch { /* not ready yet */ }
     }
 
+    // Reaching this point only means the process answers `/`. A single-page app answers `/` with
+    // its HTML shell whether or not anything behind it works, so ask the app's own declared API
+    // routes whether they are actually mounted — see smoke.ts for the run this check exists
+    // because of, where every unit test passed and the assembled app was unusable.
+    let smoke: SmokeReport | null = null;
+    if (appReady) {
+      try {
+        const targets = await buildSmokeTargets(state.workspaceDir);
+        smoke = await runSmokeCheck(appUrl, targets, fetch as unknown as FetchLike);
+        console.log(`[Deploy] ${smoke.summary}`);
+        appendLog(pipelineId, `[Deploy] ${smoke.summary}`);
+      } catch (e: any) {
+        // A smoke check that cannot run is not a passing smoke check: record it as unknown rather
+        // than letting a broken probe read as health.
+        smoke = { ok: false, results: [], summary: `smoke check could not run: ${e?.message ?? e}` };
+      }
+    }
+
     state = (await getPipeline(pipelineId))!;
+    const healthy = appReady && (smoke?.ok ?? false);
     state.appUrl = appReady ? appUrl : `${appUrl} (starting up)`;
-    state.deployResults = { deployed: appReady, output: "", ...(appReady ? { deployUrl: appUrl } : {}) };
+    state.deployResults = {
+      deployed: healthy,
+      output: smoke ? smoke.summary : "",
+      ...(healthy ? { deployUrl: appUrl } : {}),
+    };
     state.phase = "COMPLETED";
     pushPhaseHistory(state, "COMPLETED");
     state.activeGate = null;
+    // Never report a broken app as a clean finish. The phase still completes — the build is real
+    // and the workspace is inspectable — but the failure is on the record, not swallowed.
+    if (smoke && !smoke.ok) {
+      state.error = `Warning: ${smoke.summary}`;
+    }
     state.lastTransitionAt = new Date().toISOString();
     await savePipeline(state);
     await writeHandoff(state);
-    console.log(`[Deploy] Web app ${appReady ? "ready" : "launched"} at ${appUrl} for ${pipelineId}`);
+    console.log(`[Deploy] Web app ${healthy ? "ready" : appReady ? "launched (smoke check failed)" : "launched"} at ${appUrl} for ${pipelineId}`);
   } catch (err: any) {
     const s = await getPipeline(pipelineId);
     if (s) {
