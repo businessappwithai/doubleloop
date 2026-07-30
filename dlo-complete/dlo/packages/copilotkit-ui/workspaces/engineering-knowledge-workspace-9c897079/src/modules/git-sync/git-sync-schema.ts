@@ -8,6 +8,7 @@
 // `createGitSyncModuleDescriptor()` is what resolves the getter once `create()` has run.
 import type { GraphQLFieldResolver } from "graphql";
 import type { Connection, ConnectionArgs } from "../../core/connection";
+import { localIdOfType } from "../../core/global-id";
 import type { RequestContext } from "../../core/context";
 import { asBundleId } from "../../core/ids";
 import type { GitSyncModule, GitSyncRun, GitSyncRunStatus, GitSyncTrigger } from "./git-sync-module";
@@ -166,17 +167,17 @@ export interface GitSyncResolvers {
 export function createGitSyncResolvers({ getGitSync }: GitSyncResolversDeps): GitSyncResolvers {
   const gitSyncRuns: GitSyncResolvers["Query"]["gitSyncRuns"] = async (_source, args) => {
     const connectionArgs: ConnectionArgs = {
-      ...(args.first !== undefined ? { first: args.first } : {}),
-      ...(args.after !== undefined ? { after: args.after } : {}),
-      ...(args.last !== undefined ? { last: args.last } : {}),
-      ...(args.before !== undefined ? { before: args.before } : {}),
+      ...(args.first != null ? { first: args.first } : {}),
+      ...(args.after != null ? { after: args.after } : {}),
+      ...(args.last != null ? { last: args.last } : {}),
+      ...(args.before != null ? { before: args.before } : {}),
     };
-    const connection = await getGitSync().runs(asBundleId(args.bundleId), connectionArgs);
+    const connection = await getGitSync().runs(asBundleId(localIdOfType(args.bundleId, "Bundle")), connectionArgs);
     return serializeConnection(connection);
   };
 
   const triggerGitSync: GitSyncResolvers["Mutation"]["triggerGitSync"] = async (_source, args, ctx) => {
-    const run = await getGitSync().syncBundle(ctx, asBundleId(args.input.bundleId), "manual");
+    const run = await getGitSync().syncBundle(ctx, asBundleId(localIdOfType(args.input.bundleId, "Bundle")), "manual");
     return { run: serialize(run) };
   };
 

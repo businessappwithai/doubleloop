@@ -6,12 +6,15 @@
 // explicitly (so `SidebarTree` can render a spinner or an inline error under exactly the node
 // that failed), which a Suspense-based fragment hook does not expose.
 //
-// There is no GraphQL field for "root concepts of a bundle" (`Concept.children`/`ancestors` are
-// resolver extensions on `Concept`, requiring a source `Concept` — see `hierarchy-schema.graphql`)
-// — only per-node pagination exists. `SidebarTree`'s caller resolves the bundle's root concept id
-// once (via `conceptByPath(bundleId, "index")`, itself an existing Query field) and this hook
-// treats it like any other node id from then on, so the gap only has to be worked around once, at
-// the top.
+// The tree's root node is the **Bundle itself**: `hierarchy-schema.graphql` extends `Bundle` with
+// the same `children` connection it extends `Concept` with (both resolve through
+// `HierarchyModule.children`, which has always taken `null` for "bundle root"), so the query below
+// selects `children` on either and every level of the tree is addressed identically.
+//
+// It previously worked around a missing "root concepts of a bundle" field by having the caller
+// look up `conceptByPath(bundleId, "index")` and treating that concept as the root. A bundle is
+// not required to have a concept at that path — none of the seeded ones do — so every such bundle
+// rendered an empty sidebar beside a full concept list.
 //
 // Dedup uses a `Set` ref mutated synchronously the instant a fetch is kicked off — not a `loading`
 // flag read from React state — because two synchronous calls to `loadMore`/`toggle` for the same
@@ -82,6 +85,24 @@ export interface UseTreePaginationResult {
 const CHILDREN_QUERY = graphql`
   query SidebarTreeChildrenQuery($id: ID!, $first: Int!, $after: String) {
     node(id: $id) {
+      ... on Bundle {
+        children(first: $first, after: $after) {
+          edges {
+            cursor
+            node {
+              id
+              title
+              slug
+              isIndex
+              childCount
+            }
+          }
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+        }
+      }
       ... on Concept {
         children(first: $first, after: $after) {
           edges {
@@ -113,7 +134,7 @@ function toSummaries(data: ChildrenQueryData): {
 } {
   const children = data.node?.children;
   if (!children) {
-    throw new Error("useTreePagination: node did not resolve to a Concept with children");
+    throw new Error("useTreePagination: node did not resolve to a Bundle or Concept with children");
   }
   return {
     children: children.edges.map((edge) => ({ ...edge.node })),

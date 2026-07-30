@@ -3,7 +3,7 @@
 // non-base64, missing separator, empty parts, and an unknown type name.
 import { Buffer } from "node:buffer";
 import { describe, test, expect } from "vitest";
-import { NODE_TYPES, fromGlobalId, toGlobalId, type NodeTypeName } from "../src/core/global-id";
+import { NODE_TYPES, fromGlobalId, toGlobalId, type NodeTypeName, localIdOfType } from "../src/core/global-id";
 import { ValidationError } from "../src/core/errors";
 
 const LOCAL_ID = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
@@ -90,5 +90,58 @@ describe("fromGlobalId", () => {
     expectMalformed(() => fromGlobalId(null as unknown as string));
     expectMalformed(() => fromGlobalId(undefined as unknown as string));
     expectMalformed(() => fromGlobalId(12345 as unknown as string));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// localIdOfType
+//
+// Every GraphQL argument typed `ID!` carries a GLOBAL id — that is what a client holds, because it
+// is what `Node.id` returns. Several resolvers passed one straight to `asConceptId`/`asBundleId`
+// (`conceptDocument`, `saveConceptDocument`, `search`, `gitSyncRuns`, `syncBundle`), which failed
+// with "must be a v4 UUID" against the base64 string. Those fields could only ever be called with
+// a raw uuid no client ever has — opening any concept showed "ConceptId must be a v4 UUID".
+// ---------------------------------------------------------------------------
+
+describe("localIdOfType", () => {
+  const CONCEPT_UUID = "50000000-0000-4000-8000-000000000001";
+  const BUNDLE_UUID = "60000000-0000-4000-8000-000000000002";
+
+  test("returns the local id of a matching global id", () => {
+    expect(localIdOfType(toGlobalId("Concept", CONCEPT_UUID), "Concept")).toBe(CONCEPT_UUID);
+    expect(localIdOfType(toGlobalId("Bundle", BUNDLE_UUID), "Bundle")).toBe(BUNDLE_UUID);
+  });
+
+  test("round-trips with toGlobalId for both node types", () => {
+    for (const [typeName, uuid] of [["Concept", CONCEPT_UUID], ["Bundle", BUNDLE_UUID]] as const) {
+      expect(localIdOfType(toGlobalId(typeName, uuid), typeName)).toBe(uuid);
+    }
+  });
+
+  test("throws ValidationError('globalId.wrongType') when the id encodes a different type", () => {
+    try {
+      localIdOfType(toGlobalId("Bundle", BUNDLE_UUID), "Concept");
+      throw new Error("expected localIdOfType to throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ValidationError);
+      expect((err as ValidationError).message).toBe("globalId.wrongType");
+      expect((err as ValidationError).details["expected"]).toBe("Concept");
+      expect((err as ValidationError).details["actual"]).toBe("Bundle");
+    }
+  });
+
+  test("propagates ValidationError('globalId.malformed') for a non-global id", () => {
+    // A raw uuid is exactly what the broken resolvers were being handed instead.
+    expect(() => localIdOfType(CONCEPT_UUID, "Concept")).toThrow(ValidationError);
+  });
+
+  test("rejects an empty string", () => {
+    expect(() => localIdOfType("", "Concept")).toThrow(ValidationError);
+  });
+
+  test("rejects a base64 string with no type separator", () => {
+    expect(() => localIdOfType(Buffer.from("nope", "utf8").toString("base64"), "Concept")).toThrow(
+      ValidationError,
+    );
   });
 });

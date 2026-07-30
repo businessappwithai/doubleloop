@@ -115,10 +115,10 @@ async function resolveBundles(
   ctx: BundleGraphQLContext,
 ): Promise<Connection<Bundle>> {
   return ctx.bundles.list(ctx, args.workspaceId, {
-    ...(args.first !== undefined ? { first: args.first } : {}),
-    ...(args.after !== undefined ? { after: args.after } : {}),
-    ...(args.last !== undefined ? { last: args.last } : {}),
-    ...(args.before !== undefined ? { before: args.before } : {}),
+    ...(args.first != null ? { first: args.first } : {}),
+    ...(args.after != null ? { after: args.after } : {}),
+    ...(args.last != null ? { last: args.last } : {}),
+    ...(args.before != null ? { before: args.before } : {}),
   });
 }
 

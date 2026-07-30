@@ -6,7 +6,7 @@
 // `exactOptionalPropertyTypes`.
 import type { Connection } from "../../core/connection";
 import type { RequestContext } from "../../core/context";
-import { ValidationError } from "../../core/errors";
+import { NotFoundError, ValidationError } from "../../core/errors";
 import { fromGlobalId, toGlobalId } from "../../core/global-id";
 import type { BundleId, ConceptId } from "../../core/ids";
 import { asBundleId, asConceptId } from "../../core/ids";
@@ -83,20 +83,54 @@ export interface ConceptsQueryArgs {
   readonly before?: string;
 }
 
+/**
+ * Maps `NotFoundError('concept.notFound')` to `null`, rethrowing everything else.
+ *
+ * `concept` and `conceptByPath` are declared **nullable** in `concept-schema.graphql`
+ * (`concept(...): Concept`, not `Concept!`), but `ConceptModule.get`/`getByPath` signal absence by
+ * throwing — that is their documented contract, and other callers depend on it. Without this
+ * translation the nullable field could never actually be null, and asking for something that does
+ * not exist failed the whole operation instead of returning `null` for one field.
+ *
+ * That is not hypothetical: the bundle route asks for `conceptByPath(path: "index")` to find a
+ * landing concept, a bundle is not required to have one, and every bundle without an `index`
+ * concept rendered "Couldn't load this bundle — concept.notFound" instead of its concept tree. The
+ * route already reads `data?.rootConcept?.id ?? null`; it was never given the chance.
+ *
+ * Only `concept.notFound` is swallowed. A `bundle.notFound`, a validation failure or a database
+ * error still propagates — absence of one concept is a legitimate answer, everything else is not.
+ */
+const CONCEPT_NOT_FOUND = "concept.notFound";
+
+async function orNullIfConceptMissing(load: () => Promise<Concept>): Promise<Concept | null> {
+  try {
+    return await load();
+  } catch (err: unknown) {
+    if (err instanceof NotFoundError && err.message === CONCEPT_NOT_FOUND) {
+      return null;
+    }
+    throw err;
+  }
+}
+
 async function resolveConcept(
   _source: unknown,
   args: ConceptQueryArgs,
   ctx: ConceptGraphQLContext,
-): Promise<Concept> {
-  return ctx.concepts.get(ctx, decodeBundleId(args.bundleId), decodeConceptId(args.id));
+): Promise<Concept | null> {
+  return orNullIfConceptMissing(() =>
+    ctx.concepts.get(ctx, decodeBundleId(args.bundleId), decodeConceptId(args.id)),
+  );
 }
 
 async function resolveConceptByPath(
   _source: unknown,
   args: ConceptByPathQueryArgs,
   ctx: ConceptGraphQLContext,
-): Promise<Concept> {
-  return ctx.concepts.getByPath(ctx, decodeBundleId(args.bundleId), args.path);
+): Promise<Concept | null> {
+  return orNullIfConceptMissing(() =>
+    ctx.concepts.getByPath(ctx, decodeBundleId(args.bundleId), args.path),
+  );
 }
 
 async function resolveConcepts(
@@ -105,10 +139,10 @@ async function resolveConcepts(
   ctx: ConceptGraphQLContext,
 ): Promise<Connection<Concept>> {
   return ctx.concepts.list(ctx, decodeBundleId(args.bundleId), {
-    ...(args.first !== undefined ? { first: args.first } : {}),
-    ...(args.after !== undefined ? { after: args.after } : {}),
-    ...(args.last !== undefined ? { last: args.last } : {}),
-    ...(args.before !== undefined ? { before: args.before } : {}),
+    ...(args.first != null ? { first: args.first } : {}),
+    ...(args.after != null ? { after: args.after } : {}),
+    ...(args.last != null ? { last: args.last } : {}),
+    ...(args.before != null ? { before: args.before } : {}),
   });
 }
 

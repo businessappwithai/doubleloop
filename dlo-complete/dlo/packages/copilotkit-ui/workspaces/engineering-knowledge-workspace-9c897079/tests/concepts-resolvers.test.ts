@@ -16,13 +16,14 @@ import {
 } from "../src/modules/concepts/concept-schema";
 import type { ConceptModule } from "../src/modules/concepts/concept-module";
 import {
+  bundleHierarchyFieldResolvers,
   conceptHierarchyFieldResolvers,
   hierarchyMutationResolvers,
   type HierarchyGraphQLContext,
 } from "../src/modules/hierarchy/hierarchy-schema";
 import type { HierarchyModule } from "../src/modules/hierarchy/hierarchy-module";
 import { createRequestContext } from "../src/core/context";
-import { ValidationError } from "../src/core/errors";
+import { NotFoundError, ValidationError } from "../src/core/errors";
 import { toGlobalId } from "../src/core/global-id";
 import { asActorId, asBundleId, asConceptId } from "../src/core/ids";
 import type { Concept } from "../src/core/types";
@@ -244,6 +245,108 @@ describe("conceptQueryResolvers.conceptByPath", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Nullable-field semantics
+//
+// `concept` and `conceptByPath` are declared nullable in concept-schema.graphql
+// (`Concept`, not `Concept!`), but ConceptModule.get/getByPath signal absence by throwing
+// NotFoundError('concept.notFound') — their documented contract. Without translating that to
+// null, the nullable field could never be null and one missing concept failed the whole
+// operation. The bundle route asks for `conceptByPath(path: "index")` to find a landing concept,
+// bundles are not required to have one, and every bundle without an `index` concept rendered
+// "Couldn't load this bundle — concept.notFound" instead of its concept tree.
+// ---------------------------------------------------------------------------
+
+describe("conceptQueryResolvers — absent concepts resolve to null", () => {
+  test("conceptByPath returns null when the path has no concept", async () => {
+    const module = createConceptModuleStub();
+    vi.mocked(module.getByPath).mockRejectedValue(new NotFoundError("concept.notFound"));
+    const ctx = createConceptContext(module);
+
+    await expect(
+      conceptQueryResolvers.conceptByPath(
+        undefined,
+        { bundleId: toGlobalId("Bundle", BUNDLE_ID), path: "index" },
+        ctx,
+      ),
+    ).resolves.toBeNull();
+  });
+
+  test("concept returns null when the id has no concept", async () => {
+    const module = createConceptModuleStub();
+    vi.mocked(module.get).mockRejectedValue(new NotFoundError("concept.notFound"));
+    const ctx = createConceptContext(module);
+
+    await expect(
+      conceptQueryResolvers.concept(
+        undefined,
+        { bundleId: toGlobalId("Bundle", BUNDLE_ID), id: toGlobalId("Concept", CONCEPT_ID) },
+        ctx,
+      ),
+    ).resolves.toBeNull();
+  });
+
+  test("a NotFoundError for something OTHER than the concept still propagates", async () => {
+    // A missing bundle is not "this field is empty" — it must fail the operation.
+    const module = createConceptModuleStub();
+    const bundleMissing = new NotFoundError("bundle.notFound");
+    vi.mocked(module.getByPath).mockRejectedValue(bundleMissing);
+    const ctx = createConceptContext(module);
+
+    await expect(
+      conceptQueryResolvers.conceptByPath(
+        undefined,
+        { bundleId: toGlobalId("Bundle", BUNDLE_ID), path: "index" },
+        ctx,
+      ),
+    ).rejects.toBe(bundleMissing);
+  });
+
+  test("a non-NotFound error propagates unchanged", async () => {
+    const module = createConceptModuleStub();
+    const dbFailure = new Error("connection terminated unexpectedly");
+    vi.mocked(module.getByPath).mockRejectedValue(dbFailure);
+    const ctx = createConceptContext(module);
+
+    await expect(
+      conceptQueryResolvers.conceptByPath(
+        undefined,
+        { bundleId: toGlobalId("Bundle", BUNDLE_ID), path: "index" },
+        ctx,
+      ),
+    ).rejects.toBe(dbFailure);
+  });
+
+  test("a ValidationError from decoding is raised before the module is consulted", async () => {
+    const module = createConceptModuleStub();
+    const ctx = createConceptContext(module);
+
+    await expect(
+      conceptQueryResolvers.conceptByPath(
+        undefined,
+        { bundleId: toGlobalId("Concept", CONCEPT_ID), path: "index" },
+        ctx,
+      ),
+    ).rejects.toThrow(ValidationError);
+    expect(module.getByPath).not.toHaveBeenCalled();
+  });
+
+  test("a found concept is still returned, not nulled", async () => {
+    const module = createConceptModuleStub();
+    const concept = makeConcept();
+    vi.mocked(module.getByPath).mockResolvedValue(concept);
+    const ctx = createConceptContext(module);
+
+    await expect(
+      conceptQueryResolvers.conceptByPath(
+        undefined,
+        { bundleId: toGlobalId("Bundle", BUNDLE_ID), path: "index" },
+        ctx,
+      ),
+    ).resolves.toBe(concept);
+  });
+});
+
 describe("conceptQueryResolvers.concepts", () => {
   test("passes bundleId through with no pagination args", async () => {
     const module = createConceptModuleStub();
@@ -440,6 +543,79 @@ describe("conceptHierarchyFieldResolvers.children", () => {
     await conceptHierarchyFieldResolvers.children(source, { first: 20, before: "cur-9" }, ctx);
 
     expect(module.children).toHaveBeenCalledWith(ctx, source.bundleId, source.id, { first: 20, before: "cur-9" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// bundleHierarchyFieldResolvers.children (Bundle.children)
+//
+// `HierarchyModule.children` has always taken `null` for "bundle root"; nothing exposed it through
+// GraphQL. `Concept.children` needs a source Concept, so the sidebar tree had no root to expand and
+// its caller invented one by looking up `conceptByPath(bundleId, "index")`. A bundle is not
+// required to have a concept at that path — none of the seeded ones do — and every such bundle
+// rendered an empty sidebar next to a full concept list.
+// ---------------------------------------------------------------------------
+
+describe("bundleHierarchyFieldResolvers.children", () => {
+  const emptyConnection = {
+    edges: [],
+    pageInfo: { hasNextPage: false, hasPreviousPage: false, startCursor: null, endCursor: null },
+    totalCount: 0,
+  };
+
+  test("asks for the bundle's root level by passing a null parentId", async () => {
+    const module = createHierarchyModuleStub();
+    vi.mocked(module.children).mockResolvedValue(emptyConnection);
+    const ctx = createHierarchyContext(module);
+
+    const result = await bundleHierarchyFieldResolvers.children({ id: asBundleId(BUNDLE_ID) }, {}, ctx);
+
+    expect(result).toBe(emptyConnection);
+    expect(module.children).toHaveBeenCalledWith(ctx, asBundleId(BUNDLE_ID), null, {});
+  });
+
+  test("forwards the pagination args that were supplied", async () => {
+    const module = createHierarchyModuleStub();
+    vi.mocked(module.children).mockResolvedValue(emptyConnection);
+    const ctx = createHierarchyContext(module);
+
+    await bundleHierarchyFieldResolvers.children(
+      { id: asBundleId(BUNDLE_ID) },
+      { first: 25, after: "cur-1" },
+      ctx,
+    );
+
+    expect(module.children).toHaveBeenCalledWith(ctx, asBundleId(BUNDLE_ID), null, {
+      first: 25,
+      after: "cur-1",
+    });
+  });
+
+  test("treats an explicit null cursor as absent — Relay sends after: null for the first page", async () => {
+    // Passing that null straight through reached the cursor decoder and failed the request with
+    // `cursor.malformed`, so the first page of any Relay-driven connection could never load.
+    const module = createHierarchyModuleStub();
+    vi.mocked(module.children).mockResolvedValue(emptyConnection);
+    const ctx = createHierarchyContext(module);
+
+    await bundleHierarchyFieldResolvers.children(
+      { id: asBundleId(BUNDLE_ID) },
+      { first: 25, after: null, last: null, before: null } as never,
+      ctx,
+    );
+
+    expect(module.children).toHaveBeenCalledWith(ctx, asBundleId(BUNDLE_ID), null, { first: 25 });
+  });
+
+  test("Concept.children treats an explicit null cursor as absent too", async () => {
+    const module = createHierarchyModuleStub();
+    vi.mocked(module.children).mockResolvedValue(emptyConnection);
+    const ctx = createHierarchyContext(module);
+    const source = makeConcept();
+
+    await conceptHierarchyFieldResolvers.children(source, { first: 25, after: null } as never, ctx);
+
+    expect(module.children).toHaveBeenCalledWith(ctx, source.bundleId, source.id, { first: 25 });
   });
 });
 

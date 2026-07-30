@@ -86,7 +86,7 @@ describe("BundleRoute", () => {
   test("renders 'Bundle not found' when the bundle does not exist", async () => {
     const environment = createMockEnvironment();
     await renderBundleRoute(environment, "bundle-missing");
-    await resolveBundleQuery(environment, { data: { bundle: null, rootConcept: null } });
+    await resolveBundleQuery(environment, { data: { bundle: null } });
     expect(screen.getByText("Bundle not found")).toBeInTheDocument();
   });
 
@@ -94,10 +94,22 @@ describe("BundleRoute", () => {
     const environment = createMockEnvironment();
     await renderBundleRoute(environment, "bundle-abc");
     await resolveBundleQuery(environment, {
-      data: {
-        bundle: { id: "bundle-abc", title: "Runbooks", description: "Deployment runbooks" },
-        rootConcept: null,
-      },
+      data: { bundle: { id: "bundle-abc", title: "Runbooks", description: "Deployment runbooks" } },
+    });
+
+    // The bundle itself is the tree's root node, so the tree fetches its children immediately.
+    // An empty page is what "this bundle has no concepts" now looks like — there is no separate
+    // "the bundle has no index concept" state, which is what used to blank the tree entirely.
+    await act(async () => {
+      environment.mock.resolveMostRecentOperation({
+        data: {
+          node: {
+            __typename: "Bundle",
+            id: "bundle-abc",
+            children: { edges: [], pageInfo: { hasNextPage: false, endCursor: null } },
+          },
+        },
+      });
     });
 
     expect(screen.getAllByText("Runbooks").length).toBeGreaterThanOrEqual(2);
@@ -114,19 +126,19 @@ describe("BundleRoute", () => {
     const environment = createMockEnvironment();
     await renderBundleRoute(environment, "bundle-abc");
     await resolveBundleQuery(environment, {
-      data: { bundle: { id: "bundle-abc", title: "Runbooks", description: "" }, rootConcept: null },
+      data: { bundle: { id: "bundle-abc", title: "Runbooks", description: "" } },
     });
     expect(screen.getByText("No description.")).toBeInTheDocument();
   });
 
-  test("hands the root concept id to SidebarTree, which fetches and renders its children", async () => {
+  test("hands the bundle id to SidebarTree, which fetches and renders its top-level concepts", async () => {
+    // The bundle is the root node: `hierarchy-schema.graphql` extends `Bundle` with the same
+    // `children` connection `Concept` has. This used to depend on `conceptByPath(path: "index")`,
+    // so a bundle without a concept at that path — every seeded one — showed an empty sidebar.
     const environment = createMockEnvironment();
     await renderBundleRoute(environment, "bundle-abc");
     await resolveBundleQuery(environment, {
-      data: {
-        bundle: { id: "bundle-abc", title: "Runbooks", description: "Deployment runbooks" },
-        rootConcept: { id: "concept-root", title: "index", childCount: 1 },
-      },
+      data: { bundle: { id: "bundle-abc", title: "Runbooks", description: "Deployment runbooks" } },
     });
 
     expect(screen.getByText("Select a concept in the tree to open it.")).toBeInTheDocument();
@@ -135,8 +147,8 @@ describe("BundleRoute", () => {
       environment.mock.resolveMostRecentOperation({
         data: {
           node: {
-            __typename: "Concept",
-            id: "concept-root",
+            __typename: "Bundle",
+            id: "bundle-abc",
             children: {
               edges: [childEdge("concept-child", "Deploying to Prod", 0)],
               pageInfo: { hasNextPage: false, endCursor: null },

@@ -29,11 +29,7 @@ const BUNDLE_ROUTE_QUERY = graphql`
       title
       description
     }
-    rootConcept: conceptByPath(bundleId: $bundleId, path: "index") {
-      id
-      title
-      childCount
-    }
+
   }
 `;
 
@@ -107,7 +103,11 @@ function BundleRoute(): ReactElement {
     };
   }, [environment, bundleId]);
 
-  const rootId = useMemo(() => data?.rootConcept?.id ?? null, [data]);
+  // The bundle IS the tree's root node — `hierarchy-schema.graphql` extends `Bundle` with the same
+  // `children` connection `Concept` has. This used to be `rootConcept?.id`, resolved from
+  // `conceptByPath(path: "index")`, which left every bundle without an `index` concept — including
+  // every seeded one — showing an empty sidebar next to a full concept list.
+  const rootId = useMemo(() => data?.bundle?.id ?? null, [data]);
 
   if (!environment || status === "loading") {
     return (

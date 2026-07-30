@@ -329,3 +329,50 @@ describe("createConceptRepository", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// findByIdUnscoped — the by-primary-key lookup the Relay Node interface needs
+// ---------------------------------------------------------------------------
+
+describe("ConceptRepository.findByIdUnscoped", () => {
+  test("selects by id alone, with no bundle predicate", async () => {
+    const db = createFakeDb();
+    db.when(/FROM concepts WHERE id = \$1 AND deleted_at IS NULL/, { rows: [] });
+    const repo = createConceptRepository(db);
+
+    await repo.findByIdUnscoped(CONCEPT_ID);
+
+    const call = db.calls.at(-1);
+    expect(call?.sql).toContain("WHERE id = $1 AND deleted_at IS NULL");
+    // The column list legitimately selects bundle_id; what must not appear is a bundle predicate.
+    expect(call?.sql).not.toMatch(/bundle_id\s*=/);
+    expect(call?.params).toEqual([CONCEPT_ID]);
+  });
+
+  test("returns the row when one matches", async () => {
+    const db = createFakeDb();
+    const row = makeRow();
+    db.when(/FROM concepts WHERE id = \$1 AND deleted_at IS NULL/, { rows: [row] });
+    const repo = createConceptRepository(db);
+
+    await expect(repo.findByIdUnscoped(CONCEPT_ID)).resolves.toEqual(row);
+  });
+
+  test("returns null when no row matches", async () => {
+    const db = createFakeDb();
+    db.when(/FROM concepts WHERE id = \$1 AND deleted_at IS NULL/, { rows: [] });
+    const repo = createConceptRepository(db);
+
+    await expect(repo.findByIdUnscoped(CONCEPT_ID)).resolves.toBeNull();
+  });
+
+  test("excludes soft-deleted rows", async () => {
+    const db = createFakeDb();
+    db.when(/FROM concepts WHERE id = \$1 AND deleted_at IS NULL/, { rows: [] });
+    const repo = createConceptRepository(db);
+
+    await repo.findByIdUnscoped(CONCEPT_ID);
+
+    expect(db.calls.at(-1)?.sql).toContain("deleted_at IS NULL");
+  });
+});

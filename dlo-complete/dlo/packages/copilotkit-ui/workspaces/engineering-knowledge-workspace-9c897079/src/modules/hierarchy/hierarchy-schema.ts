@@ -45,6 +45,14 @@ function decodeConceptId(id: string): ConceptId {
 // Concept field resolvers (children / ancestors)
 // ---------------------------------------------------------------------------
 
+/**
+ * Pagination arguments arrive from GraphQL, where a nullable argument the caller did not mean to
+ * supply comes through as an explicit `null`, not as `undefined` — Relay sends `after: null` for
+ * the first page of every connection it fetches. Every forwarding site below therefore tests
+ * `!= null`, not `!== undefined`: passing that `null` straight through reached the cursor decoder
+ * and failed the request with `cursor.malformed`, so the first page of any Relay-driven connection
+ * could never load.
+ */
 export interface ChildrenFieldArgs {
   readonly first?: number;
   readonly after?: string;
@@ -54,12 +62,37 @@ export interface ChildrenFieldArgs {
 
 async function resolveChildren(source: Concept, args: ChildrenFieldArgs, ctx: HierarchyGraphQLContext) {
   return ctx.hierarchy.children(ctx, source.bundleId, source.id, {
-    ...(args.first !== undefined ? { first: args.first } : {}),
-    ...(args.after !== undefined ? { after: args.after } : {}),
-    ...(args.last !== undefined ? { last: args.last } : {}),
-    ...(args.before !== undefined ? { before: args.before } : {}),
+    ...(args.first != null ? { first: args.first } : {}),
+    ...(args.after != null ? { after: args.after } : {}),
+    ...(args.last != null ? { last: args.last } : {}),
+    ...(args.before != null ? { before: args.before } : {}),
   });
 }
+
+/**
+ * `Bundle.children` — the bundle's top-level concepts, i.e. `parentId = null`.
+ *
+ * `HierarchyModule.children` has always accepted `null` for "bundle root" (its own signature says
+ * so); nothing exposed it through GraphQL, which is the gap `use-tree-pagination.ts`'s header
+ * documents. With this field the sidebar's root node is the Bundle itself, so a bundle needs no
+ * concept at path "index" for its tree to render.
+ */
+async function resolveBundleChildren(
+  source: { id: BundleId },
+  args: ChildrenFieldArgs,
+  ctx: HierarchyGraphQLContext,
+) {
+  return ctx.hierarchy.children(ctx, source.id, null, {
+    ...(args.first != null ? { first: args.first } : {}),
+    ...(args.after != null ? { after: args.after } : {}),
+    ...(args.last != null ? { last: args.last } : {}),
+    ...(args.before != null ? { before: args.before } : {}),
+  });
+}
+
+export const bundleHierarchyFieldResolvers = {
+  children: resolveBundleChildren,
+};
 
 async function resolveAncestors(source: Concept, _args: Record<string, never>, ctx: HierarchyGraphQLContext) {
   return ctx.hierarchy.ancestors(ctx, source.bundleId, source.id);
@@ -110,6 +143,7 @@ export const hierarchyMutationResolvers = {
 };
 
 export const hierarchyResolvers = {
+  Bundle: bundleHierarchyFieldResolvers,
   Concept: conceptHierarchyFieldResolvers,
   Mutation: hierarchyMutationResolvers,
 };

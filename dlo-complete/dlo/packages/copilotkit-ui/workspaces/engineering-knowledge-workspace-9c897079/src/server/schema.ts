@@ -23,15 +23,19 @@
 // `resolveNode` is the one piece of real logic in this file (Architecture.md rule 2 makes the
 // orchestrator/schema layer "thin delegation", and this is exactly that): decode the opaque global
 // id, and dispatch to the module that owns the decoded type. `Bundle` dispatches cleanly —
-// `BundleModule.get(ctx, id)` needs nothing else. `Concept` cannot: `ConceptModule.get(ctx,
-// bundleId, id)` (and `ConceptRepository.findById(bundleId, id)` beneath it) require a bundle
-// scope no `Concept` global id carries — `concept-schema.ts`'s own `toGlobalId("Concept",
-// concept.id)` call site (module m10, out of this module's `touches` list) encodes only the
-// concept's own uuid, never its bundle. There is no by-id-only lookup anywhere in `ConceptModule`'s
-// public interface to call instead, and this module may not add one to a file m10 owns. Rather
-// than invent a bundle scope (there is none to invent) or silently return the wrong thing, `node(id)`
-// for a `Concept` fails loudly with a typed, documented `NotFoundError` — consistent with "no
-// module imports another module's repository internals" and "no silent fallbacks".
+// `BundleModule.get(ctx, id)` and `ConceptModule.getById(ctx, id)` each need nothing but the
+// decoded local id.
+//
+// `Concept` used to throw here instead, reasoning that `ConceptModule.get(ctx, bundleId, id)` needs
+// a bundle scope no `Concept` global id carries, and that this file could not add a by-id-only
+// lookup to a file module m10 owns. The ownership boundary was real; the conclusion was not.
+// `concepts.id` is a `uuid PRIMARY KEY` (migration 003), so a concept is globally identifiable by
+// id alone, and the Relay `Node` interface — which Architecture.md mandates — exists precisely so
+// that any object is refetchable from its global id and nothing else. A `Node` implementation that
+// cannot be refetched by `node(id:)` is not one. In practice it broke the app outright: the concept
+// route and every sidebar expansion below the root fetch through `node(id:)`, so opening any
+// concept showed "Couldn't load this concept". `ConceptModule.getById` now provides the unscoped
+// lookup; every other read stays bundle-scoped.
 import {
   buildSchema,
   GraphQLInterfaceType,
@@ -43,7 +47,7 @@ import rootTypeDefs from "../graphql/schema.root.graphql?raw";
 import type { RequestContext } from "../core/context";
 import { ConfigError, NotFoundError, ValidationError } from "../core/errors";
 import { fromGlobalId, type DecodedGlobalId } from "../core/global-id";
-import { asBundleId } from "../core/ids";
+import { asBundleId, asConceptId } from "../core/ids";
 import type { ModuleDescriptor, ModuleRegistry, OrchestratorModules, ResolverMap } from "./registry";
 import { resolveWiringOrder } from "./registry";
 
@@ -99,11 +103,9 @@ async function resolveNode(
   }
 
   // decoded.typeName is `NodeTypeName` ("Bundle" | "Concept"); the `Bundle` arm above returned,
-  // so the only value left here is "Concept" — see this file's header comment for why it cannot
-  // be resolved by id alone.
-  throw new NotFoundError("a Concept cannot be resolved by node(id:) alone; it requires a bundle scope", {
-    details: { reason: "node.conceptRequiresBundleScope", typeName: decoded.typeName, id: args.id },
-  });
+  // so the only value left here is "Concept".
+  const concept = await ctx.concepts.getById(ctx, asConceptId(decoded.localId));
+  return { ...concept, __typename: "Concept" };
 }
 
 const ROOT_RESOLVERS: MergedResolvers = {

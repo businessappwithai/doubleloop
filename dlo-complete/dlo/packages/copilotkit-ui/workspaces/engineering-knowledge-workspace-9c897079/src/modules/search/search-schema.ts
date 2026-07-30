@@ -14,7 +14,7 @@ import { z } from "zod";
 import type { GraphQLFieldResolver } from "graphql";
 import type { RequestContext } from "../../core/context";
 import type { ConnectionArgs } from "../../core/connection";
-import { toGlobalId } from "../../core/global-id";
+import { toGlobalId, localIdOfType } from "../../core/global-id";
 import { asBundleId } from "../../core/ids";
 import type { SearchHit, SearchModule } from "./search-module";
 import type { SearchQueryInput } from "./query-builder";
@@ -33,7 +33,7 @@ type SearchArgs = z.infer<typeof SearchArgsSchema>;
 
 function toSearchQuery(args: SearchArgs): SearchQueryInput {
   return {
-    bundleId: asBundleId(args.bundleId),
+    bundleId: asBundleId(localIdOfType(args.bundleId, "Bundle")),
     ...(args.text != null ? { text: args.text } : {}),
     ...(args.containment != null ? { containment: args.containment } : {}),
   };

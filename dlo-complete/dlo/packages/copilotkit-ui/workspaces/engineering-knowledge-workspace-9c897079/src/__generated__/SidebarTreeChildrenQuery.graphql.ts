@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<b7d235e6bcb3ef5fb1ee1a326f02a625>>
+ * @generated SignedSource<<031a5df34198287ddee6105ccc5ae53b>>
  * @lightSyntaxTransform
  */
 
@@ -68,115 +68,122 @@ v4 = {
   "name": "id",
   "storageKey": null
 },
-v5 = {
+v5 = [
+  {
+    "alias": null,
+    "args": [
+      {
+        "kind": "Variable",
+        "name": "after",
+        "variableName": "after"
+      },
+      {
+        "kind": "Variable",
+        "name": "first",
+        "variableName": "first"
+      }
+    ],
+    "concreteType": "ConceptConnection",
+    "kind": "LinkedField",
+    "name": "children",
+    "plural": false,
+    "selections": [
+      {
+        "alias": null,
+        "args": null,
+        "concreteType": "ConceptEdge",
+        "kind": "LinkedField",
+        "name": "edges",
+        "plural": true,
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "cursor",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "concreteType": "Concept",
+            "kind": "LinkedField",
+            "name": "node",
+            "plural": false,
+            "selections": [
+              (v4/*:: as any*/),
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "title",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "slug",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "isIndex",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "childCount",
+                "storageKey": null
+              }
+            ],
+            "storageKey": null
+          }
+        ],
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "concreteType": "PageInfo",
+        "kind": "LinkedField",
+        "name": "pageInfo",
+        "plural": false,
+        "selections": [
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "hasNextPage",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "endCursor",
+            "storageKey": null
+          }
+        ],
+        "storageKey": null
+      }
+    ],
+    "storageKey": null
+  }
+],
+v6 = {
   "kind": "InlineFragment",
-  "selections": [
-    {
-      "alias": null,
-      "args": [
-        {
-          "kind": "Variable",
-          "name": "after",
-          "variableName": "after"
-        },
-        {
-          "kind": "Variable",
-          "name": "first",
-          "variableName": "first"
-        }
-      ],
-      "concreteType": "ConceptConnection",
-      "kind": "LinkedField",
-      "name": "children",
-      "plural": false,
-      "selections": [
-        {
-          "alias": null,
-          "args": null,
-          "concreteType": "ConceptEdge",
-          "kind": "LinkedField",
-          "name": "edges",
-          "plural": true,
-          "selections": [
-            {
-              "alias": null,
-              "args": null,
-              "kind": "ScalarField",
-              "name": "cursor",
-              "storageKey": null
-            },
-            {
-              "alias": null,
-              "args": null,
-              "concreteType": "Concept",
-              "kind": "LinkedField",
-              "name": "node",
-              "plural": false,
-              "selections": [
-                (v4/*:: as any*/),
-                {
-                  "alias": null,
-                  "args": null,
-                  "kind": "ScalarField",
-                  "name": "title",
-                  "storageKey": null
-                },
-                {
-                  "alias": null,
-                  "args": null,
-                  "kind": "ScalarField",
-                  "name": "slug",
-                  "storageKey": null
-                },
-                {
-                  "alias": null,
-                  "args": null,
-                  "kind": "ScalarField",
-                  "name": "isIndex",
-                  "storageKey": null
-                },
-                {
-                  "alias": null,
-                  "args": null,
-                  "kind": "ScalarField",
-                  "name": "childCount",
-                  "storageKey": null
-                }
-              ],
-              "storageKey": null
-            }
-          ],
-          "storageKey": null
-        },
-        {
-          "alias": null,
-          "args": null,
-          "concreteType": "PageInfo",
-          "kind": "LinkedField",
-          "name": "pageInfo",
-          "plural": false,
-          "selections": [
-            {
-              "alias": null,
-              "args": null,
-              "kind": "ScalarField",
-              "name": "hasNextPage",
-              "storageKey": null
-            },
-            {
-              "alias": null,
-              "args": null,
-              "kind": "ScalarField",
-              "name": "endCursor",
-              "storageKey": null
-            }
-          ],
-          "storageKey": null
-        }
-      ],
-      "storageKey": null
-    }
-  ],
+  "selections": (v5/*:: as any*/),
+  "type": "Bundle",
+  "abstractKey": null
+},
+v7 = {
+  "kind": "InlineFragment",
+  "selections": (v5/*:: as any*/),
   "type": "Concept",
   "abstractKey": null
 };
@@ -199,7 +206,8 @@ return {
         "name": "node",
         "plural": false,
         "selections": [
-          (v5/*:: as any*/)
+          (v6/*:: as any*/),
+          (v7/*:: as any*/)
         ],
         "storageKey": null
       }
@@ -232,7 +240,8 @@ return {
             "name": "__typename",
             "storageKey": null
           },
-          (v5/*:: as any*/),
+          (v6/*:: as any*/),
+          (v7/*:: as any*/),
           (v4/*:: as any*/)
         ],
         "storageKey": null
@@ -240,16 +249,16 @@ return {
     ]
   },
   "params": {
-    "cacheID": "4557aeed3edaced2d7d9ed9dc735576a",
+    "cacheID": "5d99c02883193773a7b462e6768b2d78",
     "id": null,
     "metadata": {},
     "name": "SidebarTreeChildrenQuery",
     "operationKind": "query",
-    "text": "query SidebarTreeChildrenQuery(\n  $id: ID!\n  $first: Int!\n  $after: String\n) {\n  node(id: $id) {\n    __typename\n    ... on Concept {\n      children(first: $first, after: $after) {\n        edges {\n          cursor\n          node {\n            id\n            title\n            slug\n            isIndex\n            childCount\n          }\n        }\n        pageInfo {\n          hasNextPage\n          endCursor\n        }\n      }\n    }\n    id\n  }\n}\n"
+    "text": "query SidebarTreeChildrenQuery(\n  $id: ID!\n  $first: Int!\n  $after: String\n) {\n  node(id: $id) {\n    __typename\n    ... on Bundle {\n      children(first: $first, after: $after) {\n        edges {\n          cursor\n          node {\n            id\n            title\n            slug\n            isIndex\n            childCount\n          }\n        }\n        pageInfo {\n          hasNextPage\n          endCursor\n        }\n      }\n    }\n    ... on Concept {\n      children(first: $first, after: $after) {\n        edges {\n          cursor\n          node {\n            id\n            title\n            slug\n            isIndex\n            childCount\n          }\n        }\n        pageInfo {\n          hasNextPage\n          endCursor\n        }\n      }\n    }\n    id\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "affddc22d13cf5255e5514277cd39fef";
+(node as any).hash = "446eb5edf53d43206684387acd679a76";
 
 export default node;

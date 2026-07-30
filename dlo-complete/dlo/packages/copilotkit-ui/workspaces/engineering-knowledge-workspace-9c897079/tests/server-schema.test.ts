@@ -86,6 +86,27 @@ function buildFixture() {
   return { schema, ctx, fakeDb };
 }
 
+/** A `concepts` row as `ConceptRepository` reads it back — only the columns the tests assert on. */
+function conceptRow(overrides: { id: string; title: string }): Record<string, unknown> {
+  return {
+    id: overrides.id,
+    bundle_id: BUNDLE_ID,
+    parent_id: null,
+    slug: "quickstart",
+    path: "quickstart",
+    title: overrides.title,
+    sort_key: "a",
+    depth: 0,
+    is_index: false,
+    child_count: 0,
+    created_by: "00000000-0000-4000-8000-000000000001",
+    version: 1,
+    created_at: new Date("2026-01-01T00:00:00Z"),
+    updated_at: new Date("2026-01-01T00:00:00Z"),
+    deleted_at: null,
+  };
+}
+
 function encodeRaw(text: string): string {
   return Buffer.from(text, "utf8").toString("base64");
 }
@@ -132,18 +153,59 @@ describe("node(id:) dispatch", () => {
     expect(result.data?.["node"]).toEqual({ id: globalId, title: "Onboarding", slug: "onboarding" });
   });
 
-  test("Concept fails loudly with NotFoundError('node.conceptRequiresBundleScope') — see schema.ts's header", async () => {
-    const { schema, ctx } = buildFixture();
-    const globalId = toGlobalId("Concept", "50000000-0000-4000-8000-000000000001");
-    const document = parse(`query($id: ID!) { node(id: $id) { id } }`);
+  test("Concept resolves from its global id alone, as the Node interface requires", async () => {
+    // This used to throw NotFoundError('node.conceptRequiresBundleScope') on the reasoning that a
+    // Concept global id carries no bundle. `concepts.id` is a uuid PRIMARY KEY, so it needs none —
+    // and a Node that cannot be refetched by node(id:) is not a Node. It broke the app outright:
+    // the concept route and every sidebar expansion below the root fetch through node(id:).
+    const CONCEPT_ID = "50000000-0000-4000-8000-000000000001";
+    const { schema, ctx, fakeDb } = buildFixture();
+    fakeDb.when(/FROM concepts WHERE id = \$1 AND deleted_at IS NULL/, {
+      rows: [conceptRow({ id: CONCEPT_ID, title: "Quickstart" })],
+    });
+    const globalId = toGlobalId("Concept", CONCEPT_ID);
+    const document = parse(`query($id: ID!) { node(id: $id) { id ... on Concept { title } } }`);
 
     const result = await executeGraphQL({ schema, document, contextValue: ctx, variableValues: { id: globalId } });
 
+    expect(result.errors).toBeUndefined();
+    expect(result.data?.["node"]).toEqual({ id: globalId, title: "Quickstart" });
+  });
+
+  test("the Concept lookup is not bundle-scoped — node(id:) has no bundle to scope by", async () => {
+    const CONCEPT_ID = "50000000-0000-4000-8000-000000000001";
+    const { schema, ctx, fakeDb } = buildFixture();
+    fakeDb.when(/FROM concepts WHERE id = \$1 AND deleted_at IS NULL/, {
+      rows: [conceptRow({ id: CONCEPT_ID, title: "Quickstart" })],
+    });
+    const document = parse(`query($id: ID!) { node(id: $id) { id } }`);
+
+    await executeGraphQL({
+      schema,
+      document,
+      contextValue: ctx,
+      variableValues: { id: toGlobalId("Concept", CONCEPT_ID) },
+    });
+
+    const call = fakeDb.calls.find((c) => /FROM concepts WHERE id = \$1/.test(c.sql));
+    expect(call?.sql).not.toContain("bundle_id = $2");
+    expect(call?.params).toEqual([CONCEPT_ID]);
+  });
+
+  test("a Concept global id for a row that does not exist is a NotFoundError, not a crash", async () => {
+    const { schema, ctx, fakeDb } = buildFixture();
+    fakeDb.when(/FROM concepts WHERE id = \$1 AND deleted_at IS NULL/, { rows: [] });
+    const document = parse(`query($id: ID!) { node(id: $id) { id } }`);
+
+    const result = await executeGraphQL({
+      schema,
+      document,
+      contextValue: ctx,
+      variableValues: { id: toGlobalId("Concept", "50000000-0000-4000-8000-0000000000ff") },
+    });
+
     expect(result.data?.["node"]).toBeNull();
-    expect(result.errors).toHaveLength(1);
-    const originalError = result.errors?.[0]?.originalError;
-    expect(originalError).toBeInstanceOf(NotFoundError);
-    expect((originalError as NotFoundError).details["reason"]).toBe("node.conceptRequiresBundleScope");
+    expect(result.errors?.[0]?.originalError).toBeInstanceOf(NotFoundError);
   });
 
   test("an unrecognised type name is reclassified from ValidationError to NotFoundError('node.unknownType')", async () => {

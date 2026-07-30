@@ -48,6 +48,13 @@ export interface UpdateConceptMetadataPatch {
 export interface ConceptModule {
   /** Throws `NotFoundError('concept.notFound')` for a missing or soft-deleted concept. */
   get(ctx: RequestContext, bundleId: BundleId, id: ConceptId): Promise<Concept>;
+  /**
+   * Resolves a concept from its id alone, with no bundle scope — what the Relay `Node` interface
+   * requires, since `node(id:)` is handed nothing but a global id. `concepts.id` is a
+   * `uuid PRIMARY KEY`, so this is unambiguous. Throws `NotFoundError('concept.notFound')` for a
+   * missing or soft-deleted concept.
+   */
+  getById(ctx: RequestContext, id: ConceptId): Promise<Concept>;
   /** Throws `NotFoundError('concept.notFound')` for a missing or soft-deleted concept. */
   getByPath(ctx: RequestContext, bundleId: BundleId, path: string): Promise<Concept>;
   list(ctx: RequestContext, bundleId: BundleId, args: ConnectionArgs): Promise<Connection<Concept>>;
@@ -144,6 +151,14 @@ export function createConceptModule(deps: CreateConceptModuleDeps): ConceptModul
       const row = await repo.findById(bundleId, id);
       if (row === null) {
         throw new NotFoundError("concept.notFound", { details: { bundleId, id } });
+      }
+      return mapRow(row);
+    },
+
+    async getById(_ctx, id) {
+      const row = await repo.findByIdUnscoped(id);
+      if (row === null) {
+        throw new NotFoundError("concept.notFound", { details: { id } });
       }
       return mapRow(row);
     },

@@ -66,3 +66,26 @@ export function fromGlobalId(id: string): DecodedGlobalId {
 function malformed(id: string, reason: string): ValidationError {
   return new ValidationError("globalId.malformed", { details: { id, reason } });
 }
+
+/**
+ * Decodes a Relay global id and returns its local id, asserting the encoded type first.
+ *
+ * Every GraphQL argument typed `ID!` carries a *global* id — that is what the client holds, because
+ * it is what `Node.id` returns. Passing one straight to `asConceptId`/`asBundleId` therefore fails
+ * with "must be a v4 UUID" against the base64 string, and the field is unusable from any Relay
+ * client. Several resolvers did exactly that (`conceptDocument`, `saveConceptDocument`,
+ * `search`, `gitSyncRuns`, `syncBundle`), so those fields could only ever be called with a raw
+ * uuid no client ever has.
+ *
+ * Throws `ValidationError('globalId.wrongType')` when the id decodes to a different node type —
+ * a `Bundle` id passed where a `Concept` is expected is a caller bug, not a lookup miss.
+ */
+export function localIdOfType(id: string, expected: NodeTypeName): string {
+  const decoded = fromGlobalId(id);
+  if (decoded.typeName !== expected) {
+    throw new ValidationError("globalId.wrongType", {
+      details: { id, expected, actual: decoded.typeName },
+    });
+  }
+  return decoded.localId;
+}

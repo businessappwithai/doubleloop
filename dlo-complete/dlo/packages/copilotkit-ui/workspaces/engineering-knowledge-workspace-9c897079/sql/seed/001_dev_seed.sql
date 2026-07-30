@@ -157,10 +157,22 @@ here, then move on to Installation and Quickstart.
 $md$ AS md)
 INSERT INTO concept_documents (concept_id, bundle_id, content_blocks, body_markdown, body_sha256, block_count, word_count)
 SELECT '00000000-0000-4000-8000-000000000030'::uuid, '00000000-0000-4000-8000-000000000020'::uuid,
-  $json${"root":{"type":"root","version":1,"children":[
-    {"type":"heading","tag":"h1","version":1,"children":[{"type":"text","version":1,"text":"Getting Started"}]},
-    {"type":"paragraph","version":1,"children":[{"type":"text","version":1,"text":"This bundle documents the Platform Engineering HTTP API and the tools built on top of it. Start here, then move on to Installation and Quickstart."}]}
-  ]}}$json$::jsonb,
+  $json${
+  "root": {
+    "type": "root",
+    "children": [
+      {
+        "type": "heading",
+        "level": 1,
+        "text": "Getting Started"
+      },
+      {
+        "type": "paragraph",
+        "text": "This bundle documents the Platform Engineering HTTP API and the tools built on top of it. Start here, then move on to Installation and Quickstart."
+      }
+    ]
+  }
+}$json$::jsonb,
   body.md, encode(sha256(convert_to(body.md, 'UTF8')), 'hex'), 2, 26
 FROM body
 ON CONFLICT (concept_id) DO NOTHING;
@@ -178,12 +190,31 @@ config in `~/.okf/config.json`.
 $md$ AS md)
 INSERT INTO concept_documents (concept_id, bundle_id, content_blocks, body_markdown, body_sha256, block_count, word_count)
 SELECT '00000000-0000-4000-8000-000000000031'::uuid, '00000000-0000-4000-8000-000000000020'::uuid,
-  $json${"root":{"type":"root","version":1,"children":[
-    {"type":"heading","tag":"h1","version":1,"children":[{"type":"text","version":1,"text":"Installation"}]},
-    {"type":"paragraph","version":1,"children":[{"type":"text","version":1,"text":"Install the okf CLI from npm:"}]},
-    {"type":"code","language":"bash","version":1,"children":[{"type":"code-highlight","version":1,"text":"npm install -g @okf/cli"}]},
-    {"type":"paragraph","version":1,"children":[{"type":"text","version":1,"text":"Verify the install with okf --version. The CLI talks to the API over HTTPS and stores its config in ~/.okf/config.json."}]}
-  ]}}$json$::jsonb,
+  $json${
+  "root": {
+    "type": "root",
+    "children": [
+      {
+        "type": "heading",
+        "level": 1,
+        "text": "Installation"
+      },
+      {
+        "type": "paragraph",
+        "text": "Install the okf CLI from npm:"
+      },
+      {
+        "type": "code",
+        "language": "bash",
+        "code": "npm install -g @okf/cli"
+      },
+      {
+        "type": "paragraph",
+        "text": "Verify the install with okf --version. The CLI talks to the API over HTTPS and stores its config in ~/.okf/config.json."
+      }
+    ]
+  }
+}$json$::jsonb,
   body.md, encode(sha256(convert_to(body.md, 'UTF8')), 'hex'), 4, 34
 FROM body
 ON CONFLICT (concept_id) DO NOTHING;
@@ -202,12 +233,31 @@ The push command commits every changed concept as a Markdown file with YAML fron
 $md$ AS md)
 INSERT INTO concept_documents (concept_id, bundle_id, content_blocks, body_markdown, body_sha256, block_count, word_count)
 SELECT '00000000-0000-4000-8000-000000000032'::uuid, '00000000-0000-4000-8000-000000000020'::uuid,
-  $json${"root":{"type":"root","version":1,"children":[
-    {"type":"heading","tag":"h1","version":1,"children":[{"type":"text","version":1,"text":"Quickstart"}]},
-    {"type":"paragraph","version":1,"children":[{"type":"text","version":1,"text":"Create your first bundle and push a concept:"}]},
-    {"type":"code","language":"bash","version":1,"children":[{"type":"code-highlight","version":1,"text":"okf init my-bundle\nokf concept create my-bundle/hello-world --title \"Hello World\"\nokf push"}]},
-    {"type":"paragraph","version":1,"children":[{"type":"text","version":1,"text":"The push command commits every changed concept as a Markdown file with YAML frontmatter."}]}
-  ]}}$json$::jsonb,
+  $json${
+  "root": {
+    "type": "root",
+    "children": [
+      {
+        "type": "heading",
+        "level": 1,
+        "text": "Quickstart"
+      },
+      {
+        "type": "paragraph",
+        "text": "Create your first bundle and push a concept:"
+      },
+      {
+        "type": "code",
+        "language": "bash",
+        "code": "okf init my-bundle\nokf concept create my-bundle/hello-world --title \"Hello World\"\nokf push"
+      },
+      {
+        "type": "paragraph",
+        "text": "The push command commits every changed concept as a Markdown file with YAML frontmatter."
+      }
+    ]
+  }
+}$json$::jsonb,
   body.md, encode(sha256(convert_to(body.md, 'UTF8')), 'hex'), 4, 36
 FROM body
 ON CONFLICT (concept_id) DO NOTHING;
@@ -219,10 +269,22 @@ never from a committed file. See the Architecture document for the full variable
 $md$ AS md)
 INSERT INTO concept_documents (concept_id, bundle_id, content_blocks, body_markdown, body_sha256, block_count, word_count)
 SELECT '00000000-0000-4000-8000-000000000033'::uuid, '00000000-0000-4000-8000-000000000020'::uuid,
-  $json${"root":{"type":"root","version":1,"children":[
-    {"type":"heading","tag":"h1","version":1,"children":[{"type":"text","version":1,"text":"Configuration"}]},
-    {"type":"paragraph","version":1,"children":[{"type":"text","version":1,"text":"The CLI and the collaboration server both read configuration from environment variables only — never from a committed file. See the Architecture document for the full variable list."}]}
-  ]}}$json$::jsonb,
+  $json${
+  "root": {
+    "type": "root",
+    "children": [
+      {
+        "type": "heading",
+        "level": 1,
+        "text": "Configuration"
+      },
+      {
+        "type": "paragraph",
+        "text": "The CLI and the collaboration server both read configuration from environment variables only — never from a committed file. See the Architecture document for the full variable list."
+      }
+    ]
+  }
+}$json$::jsonb,
   body.md, encode(sha256(convert_to(body.md, 'UTF8')), 'hex'), 2, 30
 FROM body
 ON CONFLICT (concept_id) DO NOTHING;
@@ -234,10 +296,22 @@ Authentication for how to obtain one.
 $md$ AS md)
 INSERT INTO concept_documents (concept_id, bundle_id, content_blocks, body_markdown, body_sha256, block_count, word_count)
 SELECT '00000000-0000-4000-8000-000000000034'::uuid, '00000000-0000-4000-8000-000000000020'::uuid,
-  $json${"root":{"type":"root","version":1,"children":[
-    {"type":"heading","tag":"h1","version":1,"children":[{"type":"text","version":1,"text":"REST API"}]},
-    {"type":"paragraph","version":1,"children":[{"type":"text","version":1,"text":"The API is served at /api/graphql. All mutations require an authenticated actor; see Authentication for how to obtain one."}]}
-  ]}}$json$::jsonb,
+  $json${
+  "root": {
+    "type": "root",
+    "children": [
+      {
+        "type": "heading",
+        "level": 1,
+        "text": "REST API"
+      },
+      {
+        "type": "paragraph",
+        "text": "The API is served at /api/graphql. All mutations require an authenticated actor; see Authentication for how to obtain one."
+      }
+    ]
+  }
+}$json$::jsonb,
   body.md, encode(sha256(convert_to(body.md, 'UTF8')), 'hex'), 2, 22
 FROM body
 ON CONFLICT (concept_id) DO NOTHING;
@@ -250,10 +324,22 @@ flows.
 $md$ AS md)
 INSERT INTO concept_documents (concept_id, bundle_id, content_blocks, body_markdown, body_sha256, block_count, word_count)
 SELECT '00000000-0000-4000-8000-000000000035'::uuid, '00000000-0000-4000-8000-000000000020'::uuid,
-  $json${"root":{"type":"root","version":1,"children":[
-    {"type":"heading","tag":"h1","version":1,"children":[{"type":"text","version":1,"text":"Authentication"}]},
-    {"type":"paragraph","version":1,"children":[{"type":"text","version":1,"text":"Every request carries a bearer token in the Authorization header. Tokens are issued per user and scoped to a single workspace. See API Keys and OAuth 2.0 for the two supported issuance flows."}]}
-  ]}}$json$::jsonb,
+  $json${
+  "root": {
+    "type": "root",
+    "children": [
+      {
+        "type": "heading",
+        "level": 1,
+        "text": "Authentication"
+      },
+      {
+        "type": "paragraph",
+        "text": "Every request carries a bearer token in the Authorization header. Tokens are issued per user and scoped to a single workspace. See API Keys and OAuth 2.0 for the two supported issuance flows."
+      }
+    ]
+  }
+}$json$::jsonb,
   body.md, encode(sha256(convert_to(body.md, 'UTF8')), 'hex'), 2, 32
 FROM body
 ON CONFLICT (concept_id) DO NOTHING;
@@ -266,10 +352,22 @@ resolver boundary. Exceeding the limit returns a `rateLimited` error extension w
 $md$ AS md)
 INSERT INTO concept_documents (concept_id, bundle_id, content_blocks, body_markdown, body_sha256, block_count, word_count)
 SELECT '00000000-0000-4000-8000-000000000036'::uuid, '00000000-0000-4000-8000-000000000020'::uuid,
-  $json${"root":{"type":"root","version":1,"children":[
-    {"type":"heading","tag":"h1","version":1,"children":[{"type":"text","version":1,"text":"Rate Limiting"}]},
-    {"type":"paragraph","version":1,"children":[{"type":"text","version":1,"text":"Every workspace is limited to 600 requests per minute per actor, enforced at the GraphQL resolver boundary. Exceeding the limit returns a rateLimited error extension with a retryAfterMs field."}]}
-  ]}}$json$::jsonb,
+  $json${
+  "root": {
+    "type": "root",
+    "children": [
+      {
+        "type": "heading",
+        "level": 1,
+        "text": "Rate Limiting"
+      },
+      {
+        "type": "paragraph",
+        "text": "Every workspace is limited to 600 requests per minute per actor, enforced at the GraphQL resolver boundary. Exceeding the limit returns a rateLimited error extension with a retryAfterMs field."
+      }
+    ]
+  }
+}$json$::jsonb,
   body.md, encode(sha256(convert_to(body.md, 'UTF8')), 'hex'), 2, 33
 FROM body
 ON CONFLICT (concept_id) DO NOTHING;
@@ -281,10 +379,22 @@ commit SHA and the list of changed concept paths.
 $md$ AS md)
 INSERT INTO concept_documents (concept_id, bundle_id, content_blocks, body_markdown, body_sha256, block_count, word_count)
 SELECT '00000000-0000-4000-8000-000000000037'::uuid, '00000000-0000-4000-8000-000000000020'::uuid,
-  $json${"root":{"type":"root","version":1,"children":[
-    {"type":"heading","tag":"h1","version":1,"children":[{"type":"text","version":1,"text":"Webhooks"}]},
-    {"type":"paragraph","version":1,"children":[{"type":"text","version":1,"text":"Bundles can register a webhook that fires on every Git-sync commit. The payload includes the commit SHA and the list of changed concept paths."}]}
-  ]}}$json$::jsonb,
+  $json${
+  "root": {
+    "type": "root",
+    "children": [
+      {
+        "type": "heading",
+        "level": 1,
+        "text": "Webhooks"
+      },
+      {
+        "type": "paragraph",
+        "text": "Bundles can register a webhook that fires on every Git-sync commit. The payload includes the commit SHA and the list of changed concept paths."
+      }
+    ]
+  }
+}$json$::jsonb,
   body.md, encode(sha256(convert_to(body.md, 'UTF8')), 'hex'), 2, 27
 FROM body
 ON CONFLICT (concept_id) DO NOTHING;
@@ -297,10 +407,22 @@ remediation.
 $md$ AS md)
 INSERT INTO concept_documents (concept_id, bundle_id, content_blocks, body_markdown, body_sha256, block_count, word_count)
 SELECT '00000000-0000-4000-8000-000000000038'::uuid, '00000000-0000-4000-8000-000000000020'::uuid,
-  $json${"root":{"type":"root","version":1,"children":[
-    {"type":"heading","tag":"h1","version":1,"children":[{"type":"text","version":1,"text":"Error Codes"}]},
-    {"type":"paragraph","version":1,"children":[{"type":"text","version":1,"text":"Every error extension carries a machine-readable code. See "},{"type":"link","version":1,"url":"../troubleshooting","children":[{"type":"text","version":1,"text":"Troubleshooting"}]},{"type":"text","version":1,"text":" for the operator-facing playbook that maps each code to a remediation."}]}
-  ]}}$json$::jsonb,
+  $json${
+  "root": {
+    "type": "root",
+    "children": [
+      {
+        "type": "heading",
+        "level": 1,
+        "text": "Error Codes"
+      },
+      {
+        "type": "paragraph",
+        "text": "Every error extension carries a machine-readable code. See  for the operator-facing playbook that maps each code to a remediation."
+      }
+    ]
+  }
+}$json$::jsonb,
   body.md, encode(sha256(convert_to(body.md, 'UTF8')), 'hex'), 2, 24
 FROM body
 ON CONFLICT (concept_id) DO NOTHING;
@@ -314,10 +436,22 @@ report has something to show.
 $md$ AS md)
 INSERT INTO concept_documents (concept_id, bundle_id, content_blocks, body_markdown, body_sha256, block_count, word_count)
 SELECT '00000000-0000-4000-8000-000000000039'::uuid, '00000000-0000-4000-8000-000000000020'::uuid,
-  $json${"root":{"type":"root","version":1,"children":[
-    {"type":"heading","tag":"h1","version":1,"children":[{"type":"text","version":1,"text":"API Keys"}]},
-    {"type":"paragraph","version":1,"children":[{"type":"text","version":1,"text":"Generate a key from the workspace settings page. Keys are shown once; store them in a secret manager, never in a committed file. See also "},{"type":"link","version":1,"url":"../nonexistent-concept","children":[{"type":"text","version":1,"text":"Nonexistent Concept"}]},{"type":"text","version":1,"text":" — deliberately left unresolved so the broken-link report has something to show."}]}
-  ]}}$json$::jsonb,
+  $json${
+  "root": {
+    "type": "root",
+    "children": [
+      {
+        "type": "heading",
+        "level": 1,
+        "text": "API Keys"
+      },
+      {
+        "type": "paragraph",
+        "text": "Generate a key from the workspace settings page. Keys are shown once; store them in a secret manager, never in a committed file. See also  — deliberately left unresolved so the broken-link report has something to show."
+      }
+    ]
+  }
+}$json$::jsonb,
   body.md, encode(sha256(convert_to(body.md, 'UTF8')), 'hex'), 2, 38
 FROM body
 ON CONFLICT (concept_id) DO NOTHING;
@@ -329,10 +463,22 @@ client-credentials grant for service-to-service calls.
 $md$ AS md)
 INSERT INTO concept_documents (concept_id, bundle_id, content_blocks, body_markdown, body_sha256, block_count, word_count)
 SELECT '00000000-0000-4000-8000-00000000003a'::uuid, '00000000-0000-4000-8000-000000000020'::uuid,
-  $json${"root":{"type":"root","version":1,"children":[
-    {"type":"heading","tag":"h1","version":1,"children":[{"type":"text","version":1,"text":"OAuth 2.0"}]},
-    {"type":"paragraph","version":1,"children":[{"type":"text","version":1,"text":"The API supports the authorization-code grant with PKCE for interactive clients, and the client-credentials grant for service-to-service calls."}]}
-  ]}}$json$::jsonb,
+  $json${
+  "root": {
+    "type": "root",
+    "children": [
+      {
+        "type": "heading",
+        "level": 1,
+        "text": "OAuth 2.0"
+      },
+      {
+        "type": "paragraph",
+        "text": "The API supports the authorization-code grant with PKCE for interactive clients, and the client-credentials grant for service-to-service calls."
+      }
+    ]
+  }
+}$json$::jsonb,
   body.md, encode(sha256(convert_to(body.md, 'UTF8')), 'hex'), 2, 24
 FROM body
 ON CONFLICT (concept_id) DO NOTHING;
@@ -344,10 +490,22 @@ client generated from `schema.graphql`. This page has been reviewed and verified
 $md$ AS md)
 INSERT INTO concept_documents (concept_id, bundle_id, content_blocks, body_markdown, body_sha256, block_count, word_count)
 SELECT '00000000-0000-4000-8000-00000000003b'::uuid, '00000000-0000-4000-8000-000000000020'::uuid,
-  $json${"root":{"type":"root","version":1,"children":[
-    {"type":"heading","tag":"h1","version":1,"children":[{"type":"text","version":1,"text":"SDK Reference"}]},
-    {"type":"paragraph","version":1,"children":[{"type":"text","version":1,"text":"Official SDKs are published for TypeScript and Go. Both wrap the GraphQL API and expose a typed client generated from schema.graphql. This page has been reviewed and verified by a human."}]}
-  ]}}$json$::jsonb,
+  $json${
+  "root": {
+    "type": "root",
+    "children": [
+      {
+        "type": "heading",
+        "level": 1,
+        "text": "SDK Reference"
+      },
+      {
+        "type": "paragraph",
+        "text": "Official SDKs are published for TypeScript and Go. Both wrap the GraphQL API and expose a typed client generated from schema.graphql. This page has been reviewed and verified by a human."
+      }
+    ]
+  }
+}$json$::jsonb,
   body.md, encode(sha256(convert_to(body.md, 'UTF8')), 'hex'), 2, 31
 FROM body
 ON CONFLICT (concept_id) DO NOTHING;
@@ -359,10 +517,22 @@ error extensions. It is kept for historical incident reports that still referenc
 $md$ AS md)
 INSERT INTO concept_documents (concept_id, bundle_id, content_blocks, body_markdown, body_sha256, block_count, word_count)
 SELECT '00000000-0000-4000-8000-00000000003c'::uuid, '00000000-0000-4000-8000-000000000020'::uuid,
-  $json${"root":{"type":"root","version":1,"children":[
-    {"type":"heading","tag":"h1","version":1,"children":[{"type":"text","version":1,"text":"Troubleshooting"}]},
-    {"type":"paragraph","version":1,"children":[{"type":"text","version":1,"text":"This page describes the legacy debug endpoints, which are deprecated in favor of structured error extensions. It is kept for historical incident reports that still reference it."}]}
-  ]}}$json$::jsonb,
+  $json${
+  "root": {
+    "type": "root",
+    "children": [
+      {
+        "type": "heading",
+        "level": 1,
+        "text": "Troubleshooting"
+      },
+      {
+        "type": "paragraph",
+        "text": "This page describes the legacy debug endpoints, which are deprecated in favor of structured error extensions. It is kept for historical incident reports that still reference it."
+      }
+    ]
+  }
+}$json$::jsonb,
   body.md, encode(sha256(convert_to(body.md, 'UTF8')), 'hex'), 2, 29
 FROM body
 ON CONFLICT (concept_id) DO NOTHING;
@@ -374,10 +544,22 @@ the GraphQL API; kept archived for reference.
 $md$ AS md)
 INSERT INTO concept_documents (concept_id, bundle_id, content_blocks, body_markdown, body_sha256, block_count, word_count)
 SELECT '00000000-0000-4000-8000-00000000003d'::uuid, '00000000-0000-4000-8000-000000000020'::uuid,
-  $json${"root":{"type":"root","version":1,"children":[
-    {"type":"heading","tag":"h1","version":1,"children":[{"type":"text","version":1,"text":"Changelog"}]},
-    {"type":"paragraph","version":1,"children":[{"type":"text","version":1,"bold":true,"text":"v1"},{"type":"text","version":1,"text":" — Initial public release of the REST API surface described in this bundle. Superseded by the GraphQL API; kept archived for reference."}]}
-  ]}}$json$::jsonb,
+  $json${
+  "root": {
+    "type": "root",
+    "children": [
+      {
+        "type": "heading",
+        "level": 1,
+        "text": "Changelog"
+      },
+      {
+        "type": "paragraph",
+        "text": "v1 — Initial public release of the REST API surface described in this bundle. Superseded by the GraphQL API; kept archived for reference."
+      }
+    ]
+  }
+}$json$::jsonb,
   body.md, encode(sha256(convert_to(body.md, 'UTF8')), 'hex'), 2, 22
 FROM body
 ON CONFLICT (concept_id) DO NOTHING;

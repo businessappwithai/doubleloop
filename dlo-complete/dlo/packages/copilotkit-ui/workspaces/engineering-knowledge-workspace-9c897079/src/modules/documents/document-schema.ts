@@ -17,6 +17,7 @@
 // `createDocumentModuleDescriptor()` is what closes this factory over the instance it creates.
 import { Buffer } from "node:buffer";
 import type { GraphQLFieldResolver } from "graphql";
+import { localIdOfType } from "../../core/global-id";
 import type { RequestContext } from "../../core/context";
 import { asConceptId } from "../../core/ids";
 import { NotFoundError, ValidationError } from "../../core/errors";
@@ -141,7 +142,7 @@ export interface DocumentResolvers {
 export function createDocumentResolvers({ getDocuments }: DocumentResolversDeps): DocumentResolvers {
   const conceptDocument: Resolver<{ conceptId: string }> = async (_source, args) => {
     try {
-      return serialize(await getDocuments().load(asConceptId(args.conceptId)));
+      return serialize(await getDocuments().load(asConceptId(localIdOfType(args.conceptId, "Concept"))));
     } catch (err) {
       if (err instanceof NotFoundError) {
         return null;
@@ -152,7 +153,7 @@ export function createDocumentResolvers({ getDocuments }: DocumentResolversDeps)
 
   const saveDocument: DocumentResolvers["Mutation"]["saveDocument"] = async (_source, args, ctx) => {
     const document = await getDocuments().save({
-      conceptId: asConceptId(args.input.conceptId),
+      conceptId: asConceptId(localIdOfType(args.input.conceptId, "Concept")),
       title: args.input.title,
       contentBlocks: parseInputBlocks(args.input.contentBlocks),
       expectedVersion: args.input.expectedVersion,
@@ -163,7 +164,7 @@ export function createDocumentResolvers({ getDocuments }: DocumentResolversDeps)
 
   const applyCrdtUpdate: DocumentResolvers["Mutation"]["applyCrdtUpdate"] = async (_source, args, ctx) => {
     const document = await getDocuments().applyCrdtUpdate({
-      conceptId: asConceptId(args.input.conceptId),
+      conceptId: asConceptId(localIdOfType(args.input.conceptId, "Concept")),
       title: args.input.title,
       update: Buffer.from(args.input.updateB64, "base64"),
       expectedVersion: args.input.expectedVersion,

@@ -54,6 +54,16 @@ export interface InsertConceptRow {
 export interface ConceptRepository {
   insert(row: InsertConceptRow): Promise<ConceptRow>;
   findById(bundleId: string, id: string): Promise<ConceptRow | null>;
+  /**
+   * Looks a concept up by primary key alone, with no bundle scope.
+   *
+   * `concepts.id` is a `uuid PRIMARY KEY` (migration 003), so it is globally unique and this is
+   * always unambiguous. It exists for the Relay `Node` interface, whose whole contract is that any
+   * object is refetchable from its global id and nothing else — `node(id:)` has no bundle to scope
+   * by. Every other read stays bundle-scoped, because every other caller already knows the bundle
+   * and the extra predicate is a cheap guard against cross-bundle mistakes.
+   */
+  findByIdUnscoped(id: string): Promise<ConceptRow | null>;
   findByPath(bundleId: string, path: string): Promise<ConceptRow | null>;
   listConnection(bundleId: string, args: ConnectionArgs): Promise<Connection<ConceptRow & ConnectionRow>>;
   /** The live sibling with the greatest `sort_key` under `parentId` (`null` = bundle root), or `null` if there are none. */
@@ -106,6 +116,14 @@ export function createConceptRepository(db: Db): ConceptRepository {
       const result = await db.query<ConceptRow>(
         `SELECT ${CONCEPT_COLUMNS} FROM concepts WHERE id = $1 AND bundle_id = $2 AND deleted_at IS NULL`,
         [id, bundleId],
+      );
+      return result.rows[0] ?? null;
+    },
+
+    async findByIdUnscoped(id) {
+      const result = await db.query<ConceptRow>(
+        `SELECT ${CONCEPT_COLUMNS} FROM concepts WHERE id = $1 AND deleted_at IS NULL`,
+        [id],
       );
       return result.rows[0] ?? null;
     },

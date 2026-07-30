@@ -112,6 +112,17 @@ type Bundle implements Node {
   version: Int!
   createdAt: DateTime!
   updatedAt: DateTime!
+  """
+  The bundle's top-level concepts (those with no parent), sort-key ordered — the same
+  lazily-paginated shape as `Concept.children`, so the sidebar tree can treat the bundle itself as
+  its root node and every level below it identically.
+
+  Without this the tree had no root to expand: `Concept.children` needs a source `Concept`, so the
+  caller had to invent one by looking up `conceptByPath(bundleId, "index")`. A bundle is not
+  required to have a concept at that path — none of the seeded ones do — and every such bundle
+  rendered an empty sidebar next to a full concept list.
+  """
+  children(first: Int, after: String, last: Int, before: String): ConceptConnection!
 }
 
 type BundleEdge {

@@ -60,6 +60,7 @@ function createRepoStub(): ConceptRepository {
   return {
     insert: vi.fn(),
     findById: vi.fn(),
+    findByIdUnscoped: vi.fn(),
     findByPath: vi.fn(),
     listConnection: vi.fn(),
     lastSiblingSortKey: vi.fn(),
@@ -448,5 +449,62 @@ describe("normalizeSlug", () => {
   test("accepts a slug at exactly the 96-character limit", () => {
     const slug = "a".repeat(96);
     expect(normalizeSlug(slug)).toBe(slug);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getById — the unscoped lookup the Relay Node interface needs
+//
+// `node(id:)` is handed a global id and nothing else, so it has no bundle to scope by.
+// `concepts.id` is a `uuid PRIMARY KEY`, so an id-only lookup is unambiguous. Without this,
+// `node(id:)` on a Concept threw outright and the concept route plus every sidebar expansion
+// below the root failed with "Couldn't load this concept".
+// ---------------------------------------------------------------------------
+
+describe("ConceptModule.getById", () => {
+  test("returns the mapped concept for an existing id", async () => {
+    const { module, repo } = createModule();
+    const row = makeRow();
+    vi.mocked(repo.findByIdUnscoped).mockResolvedValue(row);
+
+    const result = await module.getById(ctx, asConceptId(row.id));
+
+    expect(result.id).toBe(row.id);
+    expect(result.title).toBe(row.title);
+  });
+
+  test("queries by id alone — no bundle scope is passed", async () => {
+    const { module, repo } = createModule();
+    const row = makeRow();
+    vi.mocked(repo.findByIdUnscoped).mockResolvedValue(row);
+
+    await module.getById(ctx, asConceptId(row.id));
+
+    expect(repo.findByIdUnscoped).toHaveBeenCalledWith(row.id);
+    expect(repo.findById).not.toHaveBeenCalled();
+  });
+
+  test("throws NotFoundError('concept.notFound') when no row matches", async () => {
+    const { module, repo } = createModule();
+    vi.mocked(repo.findByIdUnscoped).mockResolvedValue(null);
+
+    await expect(
+      module.getById(ctx, asConceptId("50000000-0000-4000-8000-0000000000ff")),
+    ).rejects.toThrow(NotFoundError);
+  });
+
+  test("the NotFoundError carries the id it looked for", async () => {
+    const { module, repo } = createModule();
+    vi.mocked(repo.findByIdUnscoped).mockResolvedValue(null);
+    const missing = "50000000-0000-4000-8000-0000000000ff";
+
+    try {
+      await module.getById(ctx, asConceptId(missing));
+      throw new Error("expected getById to reject");
+    } catch (err) {
+      expect(err).toBeInstanceOf(NotFoundError);
+      expect((err as NotFoundError).message).toBe("concept.notFound");
+      expect((err as NotFoundError).details["id"]).toBe(missing);
+    }
   });
 });

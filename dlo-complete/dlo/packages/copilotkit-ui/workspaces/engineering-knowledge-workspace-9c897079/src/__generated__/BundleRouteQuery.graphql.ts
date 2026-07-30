@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<4c3f913490bf6caa97426eeba31e8cc4>>
+ * @generated SignedSource<<3d9140944422a4cda57998a000e392df>>
  * @lightSyntaxTransform
  */
 
@@ -17,11 +17,6 @@ export type BundleRouteQuery$data = {
     readonly id: string;
     readonly title: string;
   } | null | undefined;
-  readonly rootConcept: {
-    readonly childCount: number;
-    readonly id: string;
-    readonly title: string;
-  } | null | undefined;
 };
 export type BundleRouteQuery = {
   response: BundleRouteQuery$data;
@@ -36,21 +31,7 @@ var v0 = [
     "name": "bundleId"
   }
 ],
-v1 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "id",
-  "storageKey": null
-},
-v2 = {
-  "alias": null,
-  "args": null,
-  "kind": "ScalarField",
-  "name": "title",
-  "storageKey": null
-},
-v3 = [
+v1 = [
   {
     "alias": null,
     "args": [
@@ -65,44 +46,25 @@ v3 = [
     "name": "bundle",
     "plural": false,
     "selections": [
-      (v1/*:: as any*/),
-      (v2/*:: as any*/),
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "id",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "title",
+        "storageKey": null
+      },
       {
         "alias": null,
         "args": null,
         "kind": "ScalarField",
         "name": "description",
-        "storageKey": null
-      }
-    ],
-    "storageKey": null
-  },
-  {
-    "alias": "rootConcept",
-    "args": [
-      {
-        "kind": "Variable",
-        "name": "bundleId",
-        "variableName": "bundleId"
-      },
-      {
-        "kind": "Literal",
-        "name": "path",
-        "value": "index"
-      }
-    ],
-    "concreteType": "Concept",
-    "kind": "LinkedField",
-    "name": "conceptByPath",
-    "plural": false,
-    "selections": [
-      (v1/*:: as any*/),
-      (v2/*:: as any*/),
-      {
-        "alias": null,
-        "args": null,
-        "kind": "ScalarField",
-        "name": "childCount",
         "storageKey": null
       }
     ],
@@ -115,7 +77,7 @@ return {
     "kind": "Fragment",
     "metadata": null,
     "name": "BundleRouteQuery",
-    "selections": (v3/*:: as any*/),
+    "selections": (v1/*:: as any*/),
     "type": "Query",
     "abstractKey": null
   },
@@ -124,19 +86,19 @@ return {
     "argumentDefinitions": (v0/*:: as any*/),
     "kind": "Operation",
     "name": "BundleRouteQuery",
-    "selections": (v3/*:: as any*/)
+    "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "27178a6911e0bc98eb2f60b59fc76631",
+    "cacheID": "883eaf4e7db7ed9515118ade70378db0",
     "id": null,
     "metadata": {},
     "name": "BundleRouteQuery",
     "operationKind": "query",
-    "text": "query BundleRouteQuery(\n  $bundleId: ID!\n) {\n  bundle(id: $bundleId) {\n    id\n    title\n    description\n  }\n  rootConcept: conceptByPath(bundleId: $bundleId, path: \"index\") {\n    id\n    title\n    childCount\n  }\n}\n"
+    "text": "query BundleRouteQuery(\n  $bundleId: ID!\n) {\n  bundle(id: $bundleId) {\n    id\n    title\n    description\n  }\n}\n"
   }
 };
 })();
 
-(node as any).hash = "0527917e71a2f35117fad523cbe32479";
+(node as any).hash = "c85e296e1cce952500638fd3bd4b6ed4";
 
 export default node;
