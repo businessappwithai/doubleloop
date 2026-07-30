@@ -406,6 +406,13 @@ describe("createGitSyncModule — start/stop/tick", () => {
     expect(clearIntervalSpy).toHaveBeenCalledTimes(1);
   });
 
+  /** Lets the void-returning timer callback's internal promise settle. */
+  async function flush(): Promise<void> {
+    for (let i = 0; i < 10; i += 1) {
+      await Promise.resolve();
+    }
+  }
+
   test("tick() catches a per-remote failure and logs it instead of throwing", async () => {
     const { timer, getHandler } = createFakeTimer();
     const { module, db, logger } = setup({ timer });
@@ -416,11 +423,77 @@ describe("createGitSyncModule — start/stop/tick", () => {
     module.start();
     const handler = getHandler()!;
 
-    await expect(handler()).resolves.toBeUndefined();
+    expect(() => handler()).not.toThrow();
+    await flush();
 
     expect(logger.error).toHaveBeenCalledWith(
       "gitSync.scheduledSyncFailed",
       expect.objectContaining({ bundleId: BUNDLE_ID }),
     );
+  });
+
+  test("the scheduling query casts $1 to timestamptz", async () => {
+    // Without the cast PostgreSQL infers `$1` as `interval` from `$1 - make_interval(...)`, making
+    // the comparison `timestamptz < interval` — `42883 operator does not exist`. Every tick failed.
+    const { timer, getHandler } = createFakeTimer();
+    const { module, db } = setup({ timer });
+
+    db.when("WHERE enabled", { rows: [] });
+
+    module.start();
+    getHandler()!();
+    await flush();
+
+    const scheduling = db.calls.find((call) => call.sql.includes("FROM git_remotes\n        WHERE enabled"));
+    expect(scheduling?.sql).toContain("$1::timestamptz - make_interval(secs => sync_interval_seconds)");
+  });
+
+  test("a rejected tick never escapes the timer callback", async () => {
+    // There is no caller to receive it: an unhandled rejection in a timer terminates the process.
+    // That is exactly what the uncast scheduling query did — one malformed query took the whole
+    // server down on the first interval.
+    const { timer, getHandler } = createFakeTimer();
+    const { module, db, logger } = setup({ timer });
+
+    const failure = new Error("operator does not exist: timestamp with time zone < interval");
+    db.when("WHERE enabled", () => {
+      throw failure;
+    });
+
+    module.start();
+    const handler = getHandler()!;
+
+    expect(() => handler()).not.toThrow();
+    expect(handler()).toBeUndefined();
+    await flush();
+
+    expect(logger.error).toHaveBeenCalledWith(
+      "gitSync.tickFailed",
+      expect.objectContaining({ error: failure.message }),
+    );
+  });
+
+  test("a failing tick does not stop later ticks from running", async () => {
+    const { timer, getHandler } = createFakeTimer();
+    const { module, db } = setup({ timer });
+
+    let calls = 0;
+    db.when("WHERE enabled", () => {
+      calls += 1;
+      if (calls === 1) {
+        throw new Error("transient");
+      }
+      return { rows: [], rowCount: 0 };
+    });
+
+    module.start();
+    const handler = getHandler()!;
+
+    handler();
+    await flush();
+    handler();
+    await flush();
+
+    expect(calls).toBe(2);
   });
 });

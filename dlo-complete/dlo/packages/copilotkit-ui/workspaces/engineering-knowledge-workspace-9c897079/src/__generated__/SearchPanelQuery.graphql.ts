@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<34b8858321b8a427109d0b3be6a0c3c5>>
+ * @generated SignedSource<<00566b8611d51e4d66abc6313ba325af>>
  * @lightSyntaxTransform
  */
 
@@ -50,100 +50,95 @@ v2 = {
 },
 v3 = [
   {
-    "kind": "ClientExtension",
+    "alias": null,
+    "args": [
+      {
+        "kind": "Variable",
+        "name": "bundleId",
+        "variableName": "bundleId"
+      },
+      {
+        "kind": "Variable",
+        "name": "first",
+        "variableName": "first"
+      },
+      {
+        "kind": "Variable",
+        "name": "text",
+        "variableName": "text"
+      }
+    ],
+    "concreteType": "SearchHitConnection",
+    "kind": "LinkedField",
+    "name": "search",
+    "plural": false,
     "selections": [
       {
         "alias": null,
-        "args": [
-          {
-            "kind": "Variable",
-            "name": "bundleId",
-            "variableName": "bundleId"
-          },
-          {
-            "kind": "Variable",
-            "name": "first",
-            "variableName": "first"
-          },
-          {
-            "kind": "Variable",
-            "name": "text",
-            "variableName": "text"
-          }
-        ],
-        "concreteType": "SearchHitConnection",
+        "args": null,
+        "concreteType": "SearchHitEdge",
         "kind": "LinkedField",
-        "name": "search",
-        "plural": false,
+        "name": "edges",
+        "plural": true,
         "selections": [
           {
             "alias": null,
             "args": null,
-            "concreteType": "SearchHitEdge",
+            "concreteType": "SearchHit",
             "kind": "LinkedField",
-            "name": "edges",
-            "plural": true,
+            "name": "node",
+            "plural": false,
             "selections": [
               {
                 "alias": null,
                 "args": null,
-                "concreteType": "SearchHit",
-                "kind": "LinkedField",
-                "name": "node",
-                "plural": false,
-                "selections": [
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "id",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "title",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "path",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "rank",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "snippet",
-                    "storageKey": null
-                  }
-                ],
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "title",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "path",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "rank",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "snippet",
                 "storageKey": null
               }
             ],
             "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "totalCount",
-            "storageKey": null
           }
         ],
         "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "totalCount",
+        "storageKey": null
       }
-    ]
+    ],
+    "storageKey": null
   }
 ];
 return {
@@ -172,12 +167,12 @@ return {
     "selections": (v3/*:: as any*/)
   },
   "params": {
-    "cacheID": "22b2757f53ee0f519f778f1de93def56",
+    "cacheID": "ac33db2d96caeb9658d036e1f8580d7d",
     "id": null,
     "metadata": {},
     "name": "SearchPanelQuery",
     "operationKind": "query",
-    "text": null
+    "text": "query SearchPanelQuery(\n  $bundleId: ID!\n  $text: String\n  $first: Int\n) {\n  search(bundleId: $bundleId, text: $text, first: $first) {\n    edges {\n      node {\n        id\n        title\n        path\n        rank\n        snippet\n      }\n    }\n    totalCount\n  }\n}\n"
   }
 };
 })();

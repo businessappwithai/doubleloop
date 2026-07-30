@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<9316b50ef5fab1c9c4983012f0cbe00c>>
+ * @generated SignedSource<<88bfaa5c639b733bfc84525acca45c9a>>
  * @lightSyntaxTransform
  */
 
@@ -46,102 +46,97 @@ v1 = {
 },
 v2 = [
   {
-    "kind": "ClientExtension",
+    "alias": null,
+    "args": [
+      {
+        "kind": "Variable",
+        "name": "first",
+        "variableName": "first"
+      },
+      {
+        "kind": "Variable",
+        "name": "workspaceId",
+        "variableName": "workspaceId"
+      }
+    ],
+    "concreteType": "BundleConnection",
+    "kind": "LinkedField",
+    "name": "bundles",
+    "plural": false,
     "selections": [
       {
         "alias": null,
-        "args": [
-          {
-            "kind": "Variable",
-            "name": "first",
-            "variableName": "first"
-          },
-          {
-            "kind": "Variable",
-            "name": "workspaceId",
-            "variableName": "workspaceId"
-          }
-        ],
-        "concreteType": "BundleConnection",
+        "args": null,
+        "concreteType": "BundleEdge",
         "kind": "LinkedField",
-        "name": "bundles",
-        "plural": false,
+        "name": "edges",
+        "plural": true,
         "selections": [
           {
             "alias": null,
             "args": null,
-            "concreteType": "BundleEdge",
+            "concreteType": "Bundle",
             "kind": "LinkedField",
-            "name": "edges",
-            "plural": true,
+            "name": "node",
+            "plural": false,
             "selections": [
               {
                 "alias": null,
                 "args": null,
-                "concreteType": "Bundle",
-                "kind": "LinkedField",
-                "name": "node",
-                "plural": false,
-                "selections": [
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "id",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "slug",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "title",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "description",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "conceptCount",
-                    "storageKey": null
-                  },
-                  {
-                    "alias": null,
-                    "args": null,
-                    "kind": "ScalarField",
-                    "name": "defaultTrust",
-                    "storageKey": null
-                  }
-                ],
+                "kind": "ScalarField",
+                "name": "id",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "slug",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "title",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "description",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "conceptCount",
+                "storageKey": null
+              },
+              {
+                "alias": null,
+                "args": null,
+                "kind": "ScalarField",
+                "name": "defaultTrust",
                 "storageKey": null
               }
             ],
             "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "totalCount",
-            "storageKey": null
           }
         ],
         "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "totalCount",
+        "storageKey": null
       }
-    ]
+    ],
+    "storageKey": null
   }
 ];
 return {
@@ -168,12 +163,12 @@ return {
     "selections": (v2/*:: as any*/)
   },
   "params": {
-    "cacheID": "5c45c2286d7c2c5b3f2355eb684a93f3",
+    "cacheID": "de04add0569d1b6223d6fbfd9520a976",
     "id": null,
     "metadata": {},
     "name": "IndexBundlesQuery",
     "operationKind": "query",
-    "text": null
+    "text": "query IndexBundlesQuery(\n  $workspaceId: String!\n  $first: Int\n) {\n  bundles(workspaceId: $workspaceId, first: $first) {\n    edges {\n      node {\n        id\n        slug\n        title\n        description\n        conceptCount\n        defaultTrust\n      }\n    }\n    totalCount\n  }\n}\n"
   }
 };
 })();

@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<a22e1c3a1af3d05c0e5d308f708b7181>>
+ * @generated SignedSource<<91a48047402e5ae18018adbf0b640630>>
  * @lightSyntaxTransform
  */
 
@@ -103,51 +103,41 @@ v8 = {
   "storageKey": null
 },
 v9 = {
-  "kind": "ClientExtension",
+  "alias": null,
+  "args": null,
+  "concreteType": "Concept",
+  "kind": "LinkedField",
+  "name": "ancestors",
+  "plural": true,
+  "selections": [
+    (v3/*:: as any*/),
+    (v5/*:: as any*/)
+  ],
+  "storageKey": null
+},
+v10 = {
+  "alias": null,
+  "args": [
+    {
+      "kind": "Variable",
+      "name": "conceptId",
+      "variableName": "conceptId"
+    }
+  ],
+  "concreteType": "ConceptDocument",
+  "kind": "LinkedField",
+  "name": "conceptDocument",
+  "plural": false,
   "selections": [
     {
       "alias": null,
       "args": null,
-      "concreteType": "Concept",
-      "kind": "LinkedField",
-      "name": "ancestors",
-      "plural": true,
-      "selections": [
-        (v3/*:: as any*/),
-        (v5/*:: as any*/)
-      ],
+      "kind": "ScalarField",
+      "name": "bodyMarkdown",
       "storageKey": null
     }
-  ]
-},
-v10 = {
-  "kind": "ClientExtension",
-  "selections": [
-    {
-      "alias": null,
-      "args": [
-        {
-          "kind": "Variable",
-          "name": "conceptId",
-          "variableName": "conceptId"
-        }
-      ],
-      "concreteType": "ConceptDocument",
-      "kind": "LinkedField",
-      "name": "conceptDocument",
-      "plural": false,
-      "selections": [
-        {
-          "alias": null,
-          "args": null,
-          "kind": "ScalarField",
-          "name": "bodyMarkdown",
-          "storageKey": null
-        }
-      ],
-      "storageKey": null
-    }
-  ]
+  ],
+  "storageKey": null
 };
 return {
   "fragment": {
@@ -223,12 +213,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "a6555809de992dcfde30d5fb2b7b1f76",
+    "cacheID": "096a2c986d0a29574a8e52262806034e",
     "id": null,
     "metadata": {},
     "name": "ConceptRouteQuery",
     "operationKind": "query",
-    "text": "query ConceptRouteQuery(\n  $conceptId: ID!\n) {\n  node(id: $conceptId) {\n    __typename\n    ... on Concept {\n      id\n      bundleId\n      title\n      path\n      version\n      updatedAt\n    }\n    id\n  }\n}\n"
+    "text": "query ConceptRouteQuery(\n  $conceptId: ID!\n) {\n  node(id: $conceptId) {\n    __typename\n    ... on Concept {\n      id\n      bundleId\n      title\n      path\n      version\n      updatedAt\n      ancestors {\n        id\n        title\n      }\n    }\n    id\n  }\n  conceptDocument(conceptId: $conceptId) {\n    bodyMarkdown\n  }\n}\n"
   }
 };
 })();

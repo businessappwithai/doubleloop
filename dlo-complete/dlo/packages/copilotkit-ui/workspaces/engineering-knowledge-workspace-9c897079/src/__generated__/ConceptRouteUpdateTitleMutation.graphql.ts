@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<0e2faf0e997e8e8b381672abba8c43ff>>
+ * @generated SignedSource<<c8024617e3278998d5fc1c20ca326550>>
  * @lightSyntaxTransform
  */
 
@@ -43,65 +43,60 @@ var v0 = [
 ],
 v1 = [
   {
-    "kind": "ClientExtension",
+    "alias": null,
+    "args": [
+      {
+        "kind": "Variable",
+        "name": "input",
+        "variableName": "input"
+      }
+    ],
+    "concreteType": "UpdateConceptMetadataPayload",
+    "kind": "LinkedField",
+    "name": "updateConceptMetadata",
+    "plural": false,
     "selections": [
       {
         "alias": null,
-        "args": [
-          {
-            "kind": "Variable",
-            "name": "input",
-            "variableName": "input"
-          }
-        ],
-        "concreteType": "UpdateConceptMetadataPayload",
+        "args": null,
+        "concreteType": "Concept",
         "kind": "LinkedField",
-        "name": "updateConceptMetadata",
+        "name": "concept",
         "plural": false,
         "selections": [
           {
             "alias": null,
             "args": null,
-            "concreteType": "Concept",
-            "kind": "LinkedField",
-            "name": "concept",
-            "plural": false,
-            "selections": [
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "id",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "title",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "version",
-                "storageKey": null
-              },
-              {
-                "alias": null,
-                "args": null,
-                "kind": "ScalarField",
-                "name": "updatedAt",
-                "storageKey": null
-              }
-            ],
+            "kind": "ScalarField",
+            "name": "id",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "title",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "version",
+            "storageKey": null
+          },
+          {
+            "alias": null,
+            "args": null,
+            "kind": "ScalarField",
+            "name": "updatedAt",
             "storageKey": null
           }
         ],
         "storageKey": null
       }
-    ]
+    ],
+    "storageKey": null
   }
 ];
 return {
@@ -122,12 +117,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "4608888e0f5d40b318342444369f9f27",
+    "cacheID": "49d118bb1568a3c66951afcd02bea09c",
     "id": null,
     "metadata": {},
     "name": "ConceptRouteUpdateTitleMutation",
     "operationKind": "mutation",
-    "text": null
+    "text": "mutation ConceptRouteUpdateTitleMutation(\n  $input: UpdateConceptMetadataInput!\n) {\n  updateConceptMetadata(input: $input) {\n    concept {\n      id\n      title\n      version\n      updatedAt\n    }\n  }\n}\n"
   }
 };
 })();

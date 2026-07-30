@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<1bf1a63eb11a5b8d6eabd324fed68d85>>
+ * @generated SignedSource<<77568397cbd2fed42fab4c632cf722da>>
  * @lightSyntaxTransform
  */
 
@@ -34,47 +34,42 @@ var v0 = [
 ],
 v1 = [
   {
-    "kind": "ClientExtension",
+    "alias": null,
+    "args": [
+      {
+        "kind": "Variable",
+        "name": "id",
+        "variableName": "bundleId"
+      }
+    ],
+    "concreteType": "Bundle",
+    "kind": "LinkedField",
+    "name": "bundle",
+    "plural": false,
     "selections": [
       {
         "alias": null,
-        "args": [
-          {
-            "kind": "Variable",
-            "name": "id",
-            "variableName": "bundleId"
-          }
-        ],
-        "concreteType": "Bundle",
-        "kind": "LinkedField",
-        "name": "bundle",
-        "plural": false,
-        "selections": [
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "id",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "title",
-            "storageKey": null
-          },
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "defaultTrust",
-            "storageKey": null
-          }
-        ],
+        "args": null,
+        "kind": "ScalarField",
+        "name": "id",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "title",
+        "storageKey": null
+      },
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "defaultTrust",
         "storageKey": null
       }
-    ]
+    ],
+    "storageKey": null
   }
 ];
 return {
@@ -95,12 +90,12 @@ return {
     "selections": (v1/*:: as any*/)
   },
   "params": {
-    "cacheID": "b17467a49eab3704305e140eb566be29",
+    "cacheID": "51fcba95d7df4ea1dbeccf656e7267f2",
     "id": null,
     "metadata": {},
     "name": "ConceptRouteBundleQuery",
     "operationKind": "query",
-    "text": null
+    "text": "query ConceptRouteBundleQuery(\n  $bundleId: ID!\n) {\n  bundle(id: $bundleId) {\n    id\n    title\n    defaultTrust\n  }\n}\n"
   }
 };
 })();

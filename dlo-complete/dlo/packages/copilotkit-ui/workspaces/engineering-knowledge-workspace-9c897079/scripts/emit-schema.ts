@@ -73,7 +73,63 @@ export function mergeSchemaDocuments(root: SchemaDocument, fragments: readonly S
     }
   }
 
-  return ordered.map((document) => `# --- ${document.path} ---\n\n${document.sdl.trimEnd()}\n`).join("\n");
+  const concatenated = ordered
+    .map((document) => `# --- ${document.path} ---\n\n${document.sdl.trimEnd()}\n`)
+    .join("\n");
+
+  return flattenTypeExtensions(concatenated);
+}
+
+/**
+ * Folds every `extend type X { ... }` block into the `type X { ... }` definition it extends, so the
+ * emitted schema contains no `extend` at all.
+ *
+ * This is not cosmetic. relay-compiler reads `schema.graphql` as the *server* schema and treats a
+ * type extension in it as a **client schema extension** — fields that exist only in the client
+ * store. An operation whose fields are all client-only has nothing to send to a server, so relay
+ * emits `params.text: null` for it. Every module fragment adds its root fields via
+ * `extend type Query` / `extend type Mutation` (that is the whole convention — `Query` is opened
+ * once in `schema.root.graphql` and never redefined), so five of this app's seven operations
+ * compiled with no query text: `src/relay/fetch.ts` POSTed `{"query": null}` and the route
+ * answered 400 for every one of them. Only the two operations that happen to use `node(id:)` —
+ * declared in the base `type Query` — worked. relay-compiler reports this quietly, as
+ * "compiled documents: 7 reader, 7 normalization, **2 operation text**".
+ *
+ * Operates on SDL text rather than a parsed AST on purpose: `print()`ing a parsed document would
+ * discard the `# --- path ---` provenance comments that make the emitted file readable, and those
+ * are the only record of which module contributed what. An `extend` of a type that is never
+ * defined is left untouched — that is a genuine schema error, and relay-compiler reports it far
+ * better than a silent rewrite here would.
+ */
+export function flattenTypeExtensions(sdl: string): string {
+  const extensionBlock = /^extend[ \t]+(type|interface|input|enum|union)[ \t]+(\w+)[ \t]*\{\n([\s\S]*?)^\}[ \t]*$\n?/gm;
+
+  const additions = new Map<string, string[]>();
+  const stripped = sdl.replace(extensionBlock, (match, _keyword: string, typeName: string, body: string) => {
+    const definitionPattern = new RegExp(`^(type|interface|input|enum|union)[ \\t]+${typeName}\\b[^{\\n]*\\{`, "m");
+    if (!definitionPattern.test(sdl)) {
+      return match; // Extends a type nothing defines — leave it for the compiler to report.
+    }
+    const bucket = additions.get(typeName) ?? [];
+    bucket.push(body.replace(/\n+$/, ""));
+    additions.set(typeName, bucket);
+    return "";
+  });
+
+  let result = stripped;
+  for (const [typeName, bodies] of additions) {
+    const definitionPattern = new RegExp(
+      `(^(?:type|interface|input|enum|union)[ \\t]+${typeName}\\b[^{\\n]*\\{\\n[\\s\\S]*?)(^\\}[ \\t]*$)`,
+      "m",
+    );
+    result = result.replace(definitionPattern, (_match, head: string, close: string) => {
+      const merged = bodies.map((body) => `${body.replace(/\n+$/, "")}\n`).join("");
+      return `${head.replace(/\n+$/, "\n")}${merged}${close}`;
+    });
+  }
+
+  // Collapse the runs of blank lines the removed blocks leave behind.
+  return result.replace(/\n{3,}/g, "\n\n");
 }
 
 /** Recursively collects every `*.graphql` file under `dir`, or `[]` if `dir` does not exist. */

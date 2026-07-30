@@ -660,9 +660,14 @@ export function createGitSyncModule(deps: CreateGitSyncModuleDeps): GitSyncModul
 
   async function tick(): Promise<void> {
     const due = await db.query<{ bundle_id: string }>(
+      // `$1::timestamptz` is not optional. Without the cast PostgreSQL has to infer the parameter's
+      // type from `$1 - make_interval(...)`, and since `make_interval` returns `interval` it
+      // resolves `$1` as `interval` too — making the comparison `timestamptz < interval`, which has
+      // no operator: `42883 operator does not exist`. Every scheduled tick failed with that.
       `SELECT bundle_id FROM git_remotes
         WHERE enabled
-          AND (last_synced_at IS NULL OR last_synced_at < $1 - make_interval(secs => sync_interval_seconds))`,
+          AND (last_synced_at IS NULL
+               OR last_synced_at < $1::timestamptz - make_interval(secs => sync_interval_seconds))`,
       [clock.now()],
     );
     for (const row of due.rows) {
@@ -684,7 +689,17 @@ export function createGitSyncModule(deps: CreateGitSyncModuleDeps): GitSyncModul
       if (timerHandle !== null) {
         return;
       }
-      timerHandle = timer.setInterval(tick, deps.intervalMs);
+      // A rejected tick must never escape the timer callback. There is no caller to receive it,
+      // so an unhandled rejection here terminates the whole Node process — which is exactly what
+      // the `timestamptz < interval` bug above did: one malformed scheduling query took the entire
+      // server down on the first interval, long after any request had finished.
+      timerHandle = timer.setInterval(() => {
+        void tick().catch((err: unknown) => {
+          logger.error("gitSync.tickFailed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }, deps.intervalMs);
     },
     stop() {
       if (timerHandle === null) {

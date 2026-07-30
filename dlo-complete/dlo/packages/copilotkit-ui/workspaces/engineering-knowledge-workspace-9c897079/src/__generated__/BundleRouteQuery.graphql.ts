@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<59f5d4beae5822d36b3e48742e818d9c>>
+ * @generated SignedSource<<4c3f913490bf6caa97426eeba31e8cc4>>
  * @lightSyntaxTransform
  */
 
@@ -52,66 +52,61 @@ v2 = {
 },
 v3 = [
   {
-    "kind": "ClientExtension",
+    "alias": null,
+    "args": [
+      {
+        "kind": "Variable",
+        "name": "id",
+        "variableName": "bundleId"
+      }
+    ],
+    "concreteType": "Bundle",
+    "kind": "LinkedField",
+    "name": "bundle",
+    "plural": false,
     "selections": [
+      (v1/*:: as any*/),
+      (v2/*:: as any*/),
       {
         "alias": null,
-        "args": [
-          {
-            "kind": "Variable",
-            "name": "id",
-            "variableName": "bundleId"
-          }
-        ],
-        "concreteType": "Bundle",
-        "kind": "LinkedField",
-        "name": "bundle",
-        "plural": false,
-        "selections": [
-          (v1/*:: as any*/),
-          (v2/*:: as any*/),
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "description",
-            "storageKey": null
-          }
-        ],
-        "storageKey": null
-      },
-      {
-        "alias": "rootConcept",
-        "args": [
-          {
-            "kind": "Variable",
-            "name": "bundleId",
-            "variableName": "bundleId"
-          },
-          {
-            "kind": "Literal",
-            "name": "path",
-            "value": "index"
-          }
-        ],
-        "concreteType": "Concept",
-        "kind": "LinkedField",
-        "name": "conceptByPath",
-        "plural": false,
-        "selections": [
-          (v1/*:: as any*/),
-          (v2/*:: as any*/),
-          {
-            "alias": null,
-            "args": null,
-            "kind": "ScalarField",
-            "name": "childCount",
-            "storageKey": null
-          }
-        ],
+        "args": null,
+        "kind": "ScalarField",
+        "name": "description",
         "storageKey": null
       }
-    ]
+    ],
+    "storageKey": null
+  },
+  {
+    "alias": "rootConcept",
+    "args": [
+      {
+        "kind": "Variable",
+        "name": "bundleId",
+        "variableName": "bundleId"
+      },
+      {
+        "kind": "Literal",
+        "name": "path",
+        "value": "index"
+      }
+    ],
+    "concreteType": "Concept",
+    "kind": "LinkedField",
+    "name": "conceptByPath",
+    "plural": false,
+    "selections": [
+      (v1/*:: as any*/),
+      (v2/*:: as any*/),
+      {
+        "alias": null,
+        "args": null,
+        "kind": "ScalarField",
+        "name": "childCount",
+        "storageKey": null
+      }
+    ],
+    "storageKey": null
   }
 ];
 return {
@@ -132,12 +127,12 @@ return {
     "selections": (v3/*:: as any*/)
   },
   "params": {
-    "cacheID": "139b4aa6a03a95ddb3543349bd597b9f",
+    "cacheID": "27178a6911e0bc98eb2f60b59fc76631",
     "id": null,
     "metadata": {},
     "name": "BundleRouteQuery",
     "operationKind": "query",
-    "text": null
+    "text": "query BundleRouteQuery(\n  $bundleId: ID!\n) {\n  bundle(id: $bundleId) {\n    id\n    title\n    description\n  }\n  rootConcept: conceptByPath(bundleId: $bundleId, path: \"index\") {\n    id\n    title\n    childCount\n  }\n}\n"
   }
 };
 })();

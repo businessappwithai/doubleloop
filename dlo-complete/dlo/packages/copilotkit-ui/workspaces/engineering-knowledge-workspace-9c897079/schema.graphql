@@ -46,10 +46,47 @@ scalar JSON
 
 type Query {
   node(id: ID!): Node
+  bundle(id: ID!): Bundle
+  bundles(workspaceId: String!, first: Int, after: String, last: Int, before: String): BundleConnection!
+  """Live presence for a concept's collaboration room. `[]` when nobody is currently editing."""
+  presence(conceptId: ID!): [PresenceEntry!]!
+  concept(bundleId: ID!, id: ID!): Concept
+  conceptByPath(bundleId: ID!, path: String!): Concept
+  concepts(bundleId: ID!, first: Int, after: String, last: Int, before: String): ConceptConnection!
+  conceptDocument(conceptId: ID!): ConceptDocument
+  """Run history for a bundle, most recent first."""
+  gitSyncRuns(bundleId: ID!, first: Int, after: String, last: Int, before: String): GitSyncRunConnection!
+  """
+  Searches a bundle's concepts. At least one of `text` or `containment` must be supplied —
+  omitting both raises a `search.emptyQuery` error. `containment` is a JSONB fragment matched
+  with `@>` against each concept's block payload.
+  """
+  search(
+    bundleId: ID!
+    text: String
+    containment: JSON
+    first: Int
+    after: String
+    last: Int
+    before: String
+  ): SearchHitConnection!
 }
 
 type Mutation {
   _empty: Boolean
+  createBundle(input: CreateBundleInput!): CreateBundlePayload!
+  renameBundle(input: RenameBundleInput!): RenameBundlePayload!
+  archiveBundle(input: ArchiveBundleInput!): ArchiveBundlePayload!
+  createConcept(input: CreateConceptInput!): CreateConceptPayload!
+  updateConceptMetadata(input: UpdateConceptMetadataInput!): UpdateConceptMetadataPayload!
+  archiveConcept(input: ArchiveConceptInput!): ArchiveConceptPayload!
+  """The non-CRDT write path: replaces `contentBlocks` wholesale under optimistic concurrency."""
+  saveDocument(input: SaveDocumentInput!): ConceptDocument!
+  """Merges a Yjs binary update into the document's CRDT state and returns the merged result."""
+  applyCrdtUpdate(input: ApplyCrdtUpdateInput!): ConceptDocument!
+  """Runs the full export → commit → push cycle for a bundle on demand (`trigger: MANUAL`)."""
+  triggerGitSync(input: TriggerGitSyncInput!): TriggerGitSyncPayload!
+  moveConcept(input: MoveConceptInput!): MoveConceptPayload!
 }
 
 # --- bundles/bundle-schema.graphql ---
@@ -88,11 +125,6 @@ type BundleConnection {
   totalCount: Int!
 }
 
-extend type Query {
-  bundle(id: ID!): Bundle
-  bundles(workspaceId: String!, first: Int, after: String, last: Int, before: String): BundleConnection!
-}
-
 input CreateBundleInput {
   workspaceId: String!
   slug: String!
@@ -125,12 +157,6 @@ type ArchiveBundlePayload {
   bundle: Bundle!
 }
 
-extend type Mutation {
-  createBundle(input: CreateBundleInput!): CreateBundlePayload!
-  renameBundle(input: RenameBundleInput!): RenameBundlePayload!
-  archiveBundle(input: ArchiveBundleInput!): ArchiveBundlePayload!
-}
-
 # --- collab/collab-schema.graphql ---
 
 # src/modules/collab/collab-schema.graphql — SDL fragment for the collaboration module
@@ -143,11 +169,6 @@ type PresenceEntry {
   displayName: String!
   color: String!
   lastSeenAt: DateTime!
-}
-
-extend type Query {
-  """Live presence for a concept's collaboration room. `[]` when nobody is currently editing."""
-  presence(conceptId: ID!): [PresenceEntry!]!
 }
 
 # --- concepts/concept-schema.graphql ---
@@ -179,6 +200,10 @@ type Concept implements Node {
   version: Int!
   createdAt: DateTime!
   updatedAt: DateTime!
+  """Live children of this concept, sort-key ordered — the lazily-paginated sidebar."""
+  children(first: Int, after: String, last: Int, before: String): ConceptConnection!
+  """Root-first ancestor chain of this concept, excluding the concept itself (the breadcrumb)."""
+  ancestors: [Concept!]!
 }
 
 type ConceptEdge {
@@ -190,12 +215,6 @@ type ConceptConnection {
   edges: [ConceptEdge!]!
   pageInfo: PageInfo!
   totalCount: Int!
-}
-
-extend type Query {
-  concept(bundleId: ID!, id: ID!): Concept
-  conceptByPath(bundleId: ID!, path: String!): Concept
-  concepts(bundleId: ID!, first: Int, after: String, last: Int, before: String): ConceptConnection!
 }
 
 input CreateConceptInput {
@@ -230,12 +249,6 @@ input ArchiveConceptInput {
 
 type ArchiveConceptPayload {
   concept: Concept!
-}
-
-extend type Mutation {
-  createConcept(input: CreateConceptInput!): CreateConceptPayload!
-  updateConceptMetadata(input: UpdateConceptMetadataInput!): UpdateConceptMetadataPayload!
-  archiveConcept(input: ArchiveConceptInput!): ArchiveConceptPayload!
 }
 
 # --- documents/document-schema.graphql ---
@@ -281,17 +294,6 @@ input ApplyCrdtUpdateInput {
   """Base64-encoded Yjs binary update."""
   updateB64: String!
   expectedVersion: Int!
-}
-
-extend type Query {
-  conceptDocument(conceptId: ID!): ConceptDocument
-}
-
-extend type Mutation {
-  """The non-CRDT write path: replaces `contentBlocks` wholesale under optimistic concurrency."""
-  saveDocument(input: SaveDocumentInput!): ConceptDocument!
-  """Merges a Yjs binary update into the document's CRDT state and returns the merged result."""
-  applyCrdtUpdate(input: ApplyCrdtUpdateInput!): ConceptDocument!
 }
 
 # --- git-sync/git-sync-schema.graphql ---
@@ -350,22 +352,12 @@ type GitSyncRunConnection {
   totalCount: Int!
 }
 
-extend type Query {
-  """Run history for a bundle, most recent first."""
-  gitSyncRuns(bundleId: ID!, first: Int, after: String, last: Int, before: String): GitSyncRunConnection!
-}
-
 input TriggerGitSyncInput {
   bundleId: ID!
 }
 
 type TriggerGitSyncPayload {
   run: GitSyncRun!
-}
-
-extend type Mutation {
-  """Runs the full export → commit → push cycle for a bundle on demand (`trigger: MANUAL`)."""
-  triggerGitSync(input: TriggerGitSyncInput!): TriggerGitSyncPayload!
 }
 
 # --- hierarchy/hierarchy-schema.graphql ---
@@ -376,13 +368,6 @@ extend type Mutation {
 # second non-extension *definition* of a type name, not an extension of one. `children`/`ancestors`
 # never take a `bundleId` argument: the resolved parent `Concept` already carries its own
 # `bundleId`, so the field resolvers read it off `source` instead of asking the client to repeat it.
-
-extend type Concept {
-  """Live children of this concept, sort-key ordered — the lazily-paginated sidebar."""
-  children(first: Int, after: String, last: Int, before: String): ConceptConnection!
-  """Root-first ancestor chain of this concept, excluding the concept itself (the breadcrumb)."""
-  ancestors: [Concept!]!
-}
 
 input MoveConceptInput {
   bundleId: ID!
@@ -396,10 +381,6 @@ input MoveConceptInput {
 
 type MoveConceptPayload {
   concept: Concept!
-}
-
-extend type Mutation {
-  moveConcept(input: MoveConceptInput!): MoveConceptPayload!
 }
 
 # --- search/search-schema.graphql ---
@@ -432,19 +413,3 @@ type SearchHitConnection {
   totalCount: Int!
 }
 
-extend type Query {
-  """
-  Searches a bundle's concepts. At least one of `text` or `containment` must be supplied —
-  omitting both raises a `search.emptyQuery` error. `containment` is a JSONB fragment matched
-  with `@>` against each concept's block payload.
-  """
-  search(
-    bundleId: ID!
-    text: String
-    containment: JSON
-    first: Int
-    after: String
-    last: Int
-    before: String
-  ): SearchHitConnection!
-}

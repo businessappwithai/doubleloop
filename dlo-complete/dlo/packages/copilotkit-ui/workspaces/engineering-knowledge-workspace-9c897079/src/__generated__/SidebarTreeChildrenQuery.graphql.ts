@@ -1,5 +1,5 @@
 /**
- * @generated SignedSource<<8a81457b31d2012bbb349af9e8019951>>
+ * @generated SignedSource<<b7d235e6bcb3ef5fb1ee1a326f02a625>>
  * @lightSyntaxTransform
  */
 
@@ -72,105 +72,74 @@ v5 = {
   "kind": "InlineFragment",
   "selections": [
     {
-      "kind": "ClientExtension",
+      "alias": null,
+      "args": [
+        {
+          "kind": "Variable",
+          "name": "after",
+          "variableName": "after"
+        },
+        {
+          "kind": "Variable",
+          "name": "first",
+          "variableName": "first"
+        }
+      ],
+      "concreteType": "ConceptConnection",
+      "kind": "LinkedField",
+      "name": "children",
+      "plural": false,
       "selections": [
         {
           "alias": null,
-          "args": [
-            {
-              "kind": "Variable",
-              "name": "after",
-              "variableName": "after"
-            },
-            {
-              "kind": "Variable",
-              "name": "first",
-              "variableName": "first"
-            }
-          ],
-          "concreteType": "ConceptConnection",
+          "args": null,
+          "concreteType": "ConceptEdge",
           "kind": "LinkedField",
-          "name": "children",
-          "plural": false,
+          "name": "edges",
+          "plural": true,
           "selections": [
             {
               "alias": null,
               "args": null,
-              "concreteType": "ConceptEdge",
-              "kind": "LinkedField",
-              "name": "edges",
-              "plural": true,
-              "selections": [
-                {
-                  "alias": null,
-                  "args": null,
-                  "kind": "ScalarField",
-                  "name": "cursor",
-                  "storageKey": null
-                },
-                {
-                  "alias": null,
-                  "args": null,
-                  "concreteType": "Concept",
-                  "kind": "LinkedField",
-                  "name": "node",
-                  "plural": false,
-                  "selections": [
-                    (v4/*:: as any*/),
-                    {
-                      "alias": null,
-                      "args": null,
-                      "kind": "ScalarField",
-                      "name": "title",
-                      "storageKey": null
-                    },
-                    {
-                      "alias": null,
-                      "args": null,
-                      "kind": "ScalarField",
-                      "name": "slug",
-                      "storageKey": null
-                    },
-                    {
-                      "alias": null,
-                      "args": null,
-                      "kind": "ScalarField",
-                      "name": "isIndex",
-                      "storageKey": null
-                    },
-                    {
-                      "alias": null,
-                      "args": null,
-                      "kind": "ScalarField",
-                      "name": "childCount",
-                      "storageKey": null
-                    }
-                  ],
-                  "storageKey": null
-                }
-              ],
+              "kind": "ScalarField",
+              "name": "cursor",
               "storageKey": null
             },
             {
               "alias": null,
               "args": null,
-              "concreteType": "PageInfo",
+              "concreteType": "Concept",
               "kind": "LinkedField",
-              "name": "pageInfo",
+              "name": "node",
               "plural": false,
               "selections": [
+                (v4/*:: as any*/),
                 {
                   "alias": null,
                   "args": null,
                   "kind": "ScalarField",
-                  "name": "hasNextPage",
+                  "name": "title",
                   "storageKey": null
                 },
                 {
                   "alias": null,
                   "args": null,
                   "kind": "ScalarField",
-                  "name": "endCursor",
+                  "name": "slug",
+                  "storageKey": null
+                },
+                {
+                  "alias": null,
+                  "args": null,
+                  "kind": "ScalarField",
+                  "name": "isIndex",
+                  "storageKey": null
+                },
+                {
+                  "alias": null,
+                  "args": null,
+                  "kind": "ScalarField",
+                  "name": "childCount",
                   "storageKey": null
                 }
               ],
@@ -178,8 +147,34 @@ v5 = {
             }
           ],
           "storageKey": null
+        },
+        {
+          "alias": null,
+          "args": null,
+          "concreteType": "PageInfo",
+          "kind": "LinkedField",
+          "name": "pageInfo",
+          "plural": false,
+          "selections": [
+            {
+              "alias": null,
+              "args": null,
+              "kind": "ScalarField",
+              "name": "hasNextPage",
+              "storageKey": null
+            },
+            {
+              "alias": null,
+              "args": null,
+              "kind": "ScalarField",
+              "name": "endCursor",
+              "storageKey": null
+            }
+          ],
+          "storageKey": null
         }
-      ]
+      ],
+      "storageKey": null
     }
   ],
   "type": "Concept",
@@ -245,12 +240,12 @@ return {
     ]
   },
   "params": {
-    "cacheID": "0ed9dc3144a43ae5f8a351725c1f4f52",
+    "cacheID": "4557aeed3edaced2d7d9ed9dc735576a",
     "id": null,
     "metadata": {},
     "name": "SidebarTreeChildrenQuery",
     "operationKind": "query",
-    "text": "query SidebarTreeChildrenQuery(\n  $id: ID!\n) {\n  node(id: $id) {\n    __typename\n    id\n  }\n}\n"
+    "text": "query SidebarTreeChildrenQuery(\n  $id: ID!\n  $first: Int!\n  $after: String\n) {\n  node(id: $id) {\n    __typename\n    ... on Concept {\n      children(first: $first, after: $after) {\n        edges {\n          cursor\n          node {\n            id\n            title\n            slug\n            isIndex\n            childCount\n          }\n        }\n        pageInfo {\n          hasNextPage\n          endCursor\n        }\n      }\n    }\n    id\n  }\n}\n"
   }
 };
 })();

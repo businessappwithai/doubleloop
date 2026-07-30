@@ -245,6 +245,7 @@ describe("createOrchestrator — execute", () => {
 describe("createOrchestrator — start/stop", () => {
   test("start() throws MigrationError('migration.pending') when autoMigrate is false and migrations are pending", async () => {
     const fakeDb = createFakeDb();
+    fakeDb.when("to_regclass", { rows: [{ table_name: "schema_migrations" }] });
     fakeDb.when("SELECT version, name, checksum FROM schema_migrations", { rows: [] });
     fakeDb.when("pg_advisory_lock", { rows: [] });
     fakeDb.when("pg_advisory_unlock", { rows: [] });
@@ -259,6 +260,7 @@ describe("createOrchestrator — start/stop", () => {
   test("start() applies pending migrations and starts gitSync when autoMigrate is true", async () => {
     const fakeDb = createFakeDb();
     fakeDb.when(/[\s\S]*/, { rows: [] }); // catch-all: lets every migration file's own SQL body run
+    fakeDb.when("to_regclass", { rows: [{ table_name: "schema_migrations" }] });
     fakeDb.when("SELECT version, name, checksum FROM schema_migrations", { rows: [] });
     fakeDb.when("pg_advisory_lock", { rows: [] });
     fakeDb.when("pg_advisory_unlock", { rows: [] });
@@ -285,6 +287,7 @@ describe("createOrchestrator — start/stop", () => {
       checksum: checksumOf(file.sql),
     }));
     const fakeDb = createFakeDb();
+    fakeDb.when("to_regclass", { rows: [{ table_name: "schema_migrations" }] });
     fakeDb.when("SELECT version, name, checksum FROM schema_migrations", { rows: applied });
     fakeDb.when("pg_advisory_lock", { rows: [] });
     fakeDb.when("pg_advisory_unlock", { rows: [] });
@@ -305,6 +308,7 @@ describe("createOrchestrator — start/stop", () => {
 
   test("stop() closes a closeable db pool and stops gitSync, even after a failed start()", async () => {
     const fakeDb = createFakeDb();
+    fakeDb.when("to_regclass", { rows: [{ table_name: "schema_migrations" }] });
     fakeDb.when("SELECT version, name, checksum FROM schema_migrations", { rows: [] });
     fakeDb.when("pg_advisory_lock", { rows: [] });
     fakeDb.when("pg_advisory_unlock", { rows: [] });

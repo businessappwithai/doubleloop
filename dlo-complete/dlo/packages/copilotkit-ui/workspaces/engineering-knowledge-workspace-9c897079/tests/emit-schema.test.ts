@@ -14,9 +14,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, test, expect } from "vitest";
+import { parse } from "graphql";
 import {
   emitSchema,
   extractTopLevelTypeNames,
+  flattenTypeExtensions,
   mergeSchemaDocuments,
   type SchemaDocument,
 } from "../scripts/emit-schema";
@@ -213,5 +215,182 @@ describe("emitSchema", () => {
     const outputPath = join(dir, "schema.graphql");
 
     expect(() => emitSchema({ rootPath, modulesDir, outputPath })).toThrow(ConfigError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// flattenTypeExtensions
+//
+// relay-compiler reads schema.graphql as the SERVER schema and treats a type extension in it as a
+// CLIENT schema extension — fields that live only in the client store. An operation whose fields
+// are all client-only has no text to send, so relay emits `params.text: null`, `src/relay/fetch.ts`
+// POSTs `{"query": null}`, and the route answers 400. Every module fragment adds its root fields
+// via `extend type Query`, so five of this app's seven operations compiled with no query text and
+// every one of them failed at runtime. relay-compiler reports it only as
+// "compiled documents: 7 reader, 7 normalization, 2 operation text".
+// ---------------------------------------------------------------------------
+
+describe("flattenTypeExtensions", () => {
+  test("folds an extend block into the type it extends", () => {
+    const sdl = ["type Query {", "  node(id: ID!): Node", "}", "", "extend type Query {", "  bundle(id: ID!): Bundle", "}", ""].join("\n");
+
+    const result = flattenTypeExtensions(sdl);
+
+    expect(result).not.toContain("extend type");
+    expect(result).toContain("  node(id: ID!): Node");
+    expect(result).toContain("  bundle(id: ID!): Bundle");
+    expect(result.match(/^type Query \{/gm)).toHaveLength(1);
+  });
+
+  test("folds several extends of the same type, in document order", () => {
+    const sdl = [
+      "type Query {",
+      "  node(id: ID!): Node",
+      "}",
+      "",
+      "extend type Query {",
+      "  bundle(id: ID!): Bundle",
+      "}",
+      "",
+      "extend type Query {",
+      "  concept(id: ID!): Concept",
+      "}",
+      "",
+    ].join("\n");
+
+    const result = flattenTypeExtensions(sdl);
+
+    expect(result).not.toContain("extend type");
+    const body = result.slice(result.indexOf("type Query {"), result.indexOf("}", result.indexOf("type Query {")));
+    expect(body.indexOf("node")).toBeLessThan(body.indexOf("bundle"));
+    expect(body.indexOf("bundle")).toBeLessThan(body.indexOf("concept"));
+  });
+
+  test("folds into a type declared with an implements clause", () => {
+    // `type Concept implements Node {` — the definition pattern must not require `{` to follow
+    // the name directly, or the extension is silently left behind.
+    const sdl = [
+      "type Concept implements Node {",
+      "  id: ID!",
+      "}",
+      "",
+      "extend type Concept {",
+      "  children: [Concept!]!",
+      "}",
+      "",
+    ].join("\n");
+
+    const result = flattenTypeExtensions(sdl);
+
+    expect(result).not.toContain("extend type");
+    expect(result).toContain("  children: [Concept!]!");
+  });
+
+  test("folds extends of Mutation, interfaces, inputs and enums alike", () => {
+    const sdl = [
+      "type Mutation {",
+      "  _empty: Boolean",
+      "}",
+      "",
+      "extend type Mutation {",
+      "  createBundle(input: CreateBundleInput!): Bundle!",
+      "}",
+      "",
+      "input Filter {",
+      "  q: String",
+      "}",
+      "",
+      "extend input Filter {",
+      "  limit: Int",
+      "}",
+      "",
+    ].join("\n");
+
+    const result = flattenTypeExtensions(sdl);
+
+    expect(result).not.toContain("extend type");
+    expect(result).not.toContain("extend input");
+    expect(result).toContain("  createBundle(input: CreateBundleInput!): Bundle!");
+    expect(result).toContain("  limit: Int");
+  });
+
+  test("preserves field descriptions and comments inside a folded block", () => {
+    const sdl = [
+      "type Query {",
+      "  node(id: ID!): Node",
+      "}",
+      "",
+      "extend type Query {",
+      '  """Live presence."""',
+      "  presence(conceptId: ID!): [PresenceEntry!]!",
+      "}",
+      "",
+    ].join("\n");
+
+    const result = flattenTypeExtensions(sdl);
+
+    expect(result).toContain('"""Live presence."""');
+    expect(result).toContain("  presence(conceptId: ID!): [PresenceEntry!]!");
+  });
+
+  test("leaves an extend of a type nothing defines untouched, for the compiler to report", () => {
+    const sdl = ["extend type Missing {", "  field: String", "}", ""].join("\n");
+
+    expect(flattenTypeExtensions(sdl)).toContain("extend type Missing {");
+  });
+
+  test("is a no-op on SDL with no extensions", () => {
+    const sdl = ["type Query {", "  node(id: ID!): Node", "}", ""].join("\n");
+
+    expect(flattenTypeExtensions(sdl)).toBe(sdl);
+  });
+
+  test("is a no-op on an empty document", () => {
+    expect(flattenTypeExtensions("")).toBe("");
+  });
+
+  test("keeps the provenance comments that make the emitted file readable", () => {
+    const sdl = [
+      "# --- src/graphql/schema.root.graphql ---",
+      "",
+      "type Query {",
+      "  node(id: ID!): Node",
+      "}",
+      "",
+      "# --- src/modules/bundles/bundle-schema.graphql ---",
+      "",
+      "extend type Query {",
+      "  bundle(id: ID!): Bundle",
+      "}",
+      "",
+    ].join("\n");
+
+    const result = flattenTypeExtensions(sdl);
+
+    expect(result).toContain("# --- src/graphql/schema.root.graphql ---");
+    expect(result).toContain("# --- src/modules/bundles/bundle-schema.graphql ---");
+  });
+
+  test("produces a document the graphql parser still accepts", () => {
+    const sdl = [
+      "type Query {",
+      "  node(id: ID!): Node",
+      "}",
+      "",
+      "extend type Query {",
+      "  bundle(id: ID!): Bundle",
+      "}",
+      "",
+      "type Bundle {",
+      "  id: ID!",
+      "}",
+      "",
+      "interface Node {",
+      "  id: ID!",
+      "}",
+      "",
+    ].join("\n");
+
+    expect(() => parse(flattenTypeExtensions(sdl))).not.toThrow();
   });
 });
