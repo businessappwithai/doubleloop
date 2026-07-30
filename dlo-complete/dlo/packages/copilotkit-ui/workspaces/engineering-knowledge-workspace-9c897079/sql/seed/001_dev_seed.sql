@@ -122,29 +122,29 @@ ON CONFLICT (id) DO NOTHING;
 -- five lifecycle states across the set.
 -- ---------------------------------------------------------------------
 
-INSERT INTO concept_frontmatter (concept_id, bundle_id, trust, lifecycle, tags, owners)
+INSERT INTO concept_frontmatter (concept_id, bundle_id, trust, lifecycle, tags, owners, verified_at, verified_by)
 VALUES
-  ('00000000-0000-4000-8000-000000000030', '00000000-0000-4000-8000-000000000020', 'unverified', 'draft', '{onboarding}', '{platform-eng}'),
-  ('00000000-0000-4000-8000-000000000031', '00000000-0000-4000-8000-000000000020', 'unverified', 'draft', '{onboarding,setup}', '{platform-eng}'),
-  ('00000000-0000-4000-8000-000000000032', '00000000-0000-4000-8000-000000000020', 'unverified', 'review', '{onboarding}', '{platform-eng}'),
-  ('00000000-0000-4000-8000-000000000033', '00000000-0000-4000-8000-000000000020', 'unverified', 'draft', '{onboarding,config}', '{platform-eng}'),
-  ('00000000-0000-4000-8000-000000000034', '00000000-0000-4000-8000-000000000020', 'unverified', 'draft', '{api}', '{platform-eng}'),
-  ('00000000-0000-4000-8000-000000000035', '00000000-0000-4000-8000-000000000020', 'unverified', 'draft', '{api,security}', '{platform-eng}'),
-  ('00000000-0000-4000-8000-000000000036', '00000000-0000-4000-8000-000000000020', 'machine_confirmed', 'draft', '{api,operations}', '{platform-eng}'),
-  ('00000000-0000-4000-8000-000000000037', '00000000-0000-4000-8000-000000000020', 'unverified', 'draft', '{api}', '{platform-eng}'),
-  ('00000000-0000-4000-8000-000000000038', '00000000-0000-4000-8000-000000000020', 'unverified', 'draft', '{api,reference}', '{platform-eng}'),
-  ('00000000-0000-4000-8000-000000000039', '00000000-0000-4000-8000-000000000020', 'unverified', 'draft', '{api,security}', '{platform-eng}'),
-  ('00000000-0000-4000-8000-00000000003a', '00000000-0000-4000-8000-000000000020', 'unverified', 'draft', '{api,security}', '{platform-eng}'),
-  ('00000000-0000-4000-8000-00000000003b', '00000000-0000-4000-8000-000000000020', 'human_reviewed', 'published', '{sdk,reference}', '{platform-eng}'),
-  ('00000000-0000-4000-8000-00000000003c', '00000000-0000-4000-8000-000000000020', 'unverified', 'deprecated', '{support}', '{platform-eng}'),
-  ('00000000-0000-4000-8000-00000000003d', '00000000-0000-4000-8000-000000000020', 'unverified', 'archived', '{history}', '{platform-eng}')
+  ('00000000-0000-4000-8000-000000000030', '00000000-0000-4000-8000-000000000020', 'unverified', 'draft', '{onboarding}', '{platform-eng}', NULL, NULL),
+  ('00000000-0000-4000-8000-000000000031', '00000000-0000-4000-8000-000000000020', 'unverified', 'draft', '{onboarding,setup}', '{platform-eng}', NULL, NULL),
+  ('00000000-0000-4000-8000-000000000032', '00000000-0000-4000-8000-000000000020', 'unverified', 'review', '{onboarding}', '{platform-eng}', NULL, NULL),
+  ('00000000-0000-4000-8000-000000000033', '00000000-0000-4000-8000-000000000020', 'unverified', 'draft', '{onboarding,config}', '{platform-eng}', NULL, NULL),
+  ('00000000-0000-4000-8000-000000000034', '00000000-0000-4000-8000-000000000020', 'unverified', 'draft', '{api}', '{platform-eng}', NULL, NULL),
+  ('00000000-0000-4000-8000-000000000035', '00000000-0000-4000-8000-000000000020', 'unverified', 'draft', '{api,security}', '{platform-eng}', NULL, NULL),
+  ('00000000-0000-4000-8000-000000000036', '00000000-0000-4000-8000-000000000020', 'machine_confirmed', 'draft', '{api,operations}', '{platform-eng}', NULL, NULL),
+  ('00000000-0000-4000-8000-000000000037', '00000000-0000-4000-8000-000000000020', 'unverified', 'draft', '{api}', '{platform-eng}', NULL, NULL),
+  ('00000000-0000-4000-8000-000000000038', '00000000-0000-4000-8000-000000000020', 'unverified', 'draft', '{api,reference}', '{platform-eng}', NULL, NULL),
+  ('00000000-0000-4000-8000-000000000039', '00000000-0000-4000-8000-000000000020', 'unverified', 'draft', '{api,security}', '{platform-eng}', NULL, NULL),
+  ('00000000-0000-4000-8000-00000000003a', '00000000-0000-4000-8000-000000000020', 'unverified', 'draft', '{api,security}', '{platform-eng}', NULL, NULL),
+  ('00000000-0000-4000-8000-00000000003b', '00000000-0000-4000-8000-000000000020', 'human_reviewed', 'published', '{sdk,reference}', '{platform-eng}', now(), '00000000-0000-4000-8000-000000000001'),
+  ('00000000-0000-4000-8000-00000000003c', '00000000-0000-4000-8000-000000000020', 'unverified', 'deprecated', '{support}', '{platform-eng}', NULL, NULL),
+  ('00000000-0000-4000-8000-00000000003d', '00000000-0000-4000-8000-000000000020', 'unverified', 'archived', '{history}', '{platform-eng}', NULL, NULL)
 ON CONFLICT (concept_id) DO NOTHING;
 
--- sdk-reference is the one `human_reviewed` concept; the review-consistency CHECK requires
--- verified_at whenever trust = 'human_reviewed'.
-UPDATE concept_frontmatter
-SET verified_at = now(), verified_by = '00000000-0000-4000-8000-000000000001'
-WHERE concept_id = '00000000-0000-4000-8000-00000000003b' AND verified_at IS NULL;
+-- sdk-reference is the one `human_reviewed` concept. concept_frontmatter_review_consistent
+-- (CHECK ((trust = 'human_reviewed') = (verified_at IS NOT NULL))) is a row constraint evaluated
+-- at INSERT time, so verified_at/verified_by must be supplied in the INSERT above. They used to be
+-- set by an UPDATE here, which could never run: the INSERT failed first, taking the whole seed
+-- transaction with it.
 
 -- ---------------------------------------------------------------------
 -- Documents — real Lexical EditorState JSON + matching body_markdown per concept.

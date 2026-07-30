@@ -31,9 +31,17 @@ const GRAPHQL_ENDPOINT = "/api/graphql";
 /**
  * No workspace/tenant module exists (`bundle-schema.graphql`'s `workspaceId` is a bare `String!`,
  * never backed by a `workspaces` module or a switcher UI) — this workspace is effectively
- * single-tenant, so every bundle list request uses one fixed, real (not fabricated) identifier.
+ * single-tenant, so every bundle list request uses one fixed identifier.
+ *
+ * It must be the id of a row that actually exists in `workspaces`, whose `id` column is `uuid`
+ * (migration `002_identity_and_workspaces.sql`). This was previously the string
+ * `"default-workspace"`, which no `uuid` column can hold: every bundle query failed with
+ * `invalid input syntax for type uuid`, so the picker could never list anything. The value below
+ * is the workspace `sql/seed/001_dev_seed.sql` inserts — "Platform Engineering", from that file's
+ * reserved deterministic namespace — so a migrated-and-seeded database renders on first load.
+ * Replace this with a real workspace selection once a workspace module exists.
  */
-export const DEFAULT_WORKSPACE_ID = "default-workspace";
+export const DEFAULT_WORKSPACE_ID = "00000000-0000-4000-8000-000000000010";
 
 export interface ClientActorIdentity {
   readonly actorId: string;

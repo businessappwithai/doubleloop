@@ -16,6 +16,7 @@
     "relay": "relay-compiler",
     "schema:emit": "node scripts/schema-emit.mjs",
     "migrate": "node scripts/migrate.mjs",
+    "db:seed": "node scripts/db-seed.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
