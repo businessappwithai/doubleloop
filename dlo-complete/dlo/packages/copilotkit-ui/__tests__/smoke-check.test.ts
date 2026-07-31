@@ -14,6 +14,7 @@
 
 import { describe, expect, test } from "vitest";
 import {
+  API_PROBE_BODY,
   buildSmokeTargets,
   discoverApiRoutes,
   looksLikeHtmlDocument,
@@ -221,6 +222,50 @@ describe("probeTarget", () => {
     const impl = fakeFetch({ "/api/graphql": { status: 200, body: "{}" } });
     await probeTarget("http://localhost:3000", API, impl);
     expect(impl.calls).toEqual([{ url: "http://localhost:3000/api/graphql", method: "POST" }]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The probe body
+//
+// The first version of this check POSTed `{}`, which every well-built route rejects at body
+// validation — before it reads its configuration, opens a database connection, or runs a resolver.
+// That made the probe prove only that something was listening: a production build that died on
+// every real request with `ConfigError: Invalid configuration for INSTANCE_ID: Required` still
+// passed the smoke check, because the malformed body short-circuited ahead of the broken code.
+// ---------------------------------------------------------------------------
+
+describe("API probe body", () => {
+  test("is a valid GraphQL query, not a body the route rejects before doing any work", () => {
+    expect(JSON.parse(API_PROBE_BODY)).toEqual({ query: "{ __typename }" });
+  });
+
+  test("is sent on API probes", async () => {
+    const bodies: Array<string | undefined> = [];
+    const impl = (async (_url: string, init?: { body?: string }) => {
+      bodies.push(init?.body);
+      return { status: 200, headers: { get: () => null }, text: async () => '{"data":{}}' };
+    }) as unknown as FetchLike;
+
+    await probeTarget("http://localhost:3000", { path: "/api/graphql", kind: "api", method: "POST" }, impl);
+
+    expect(bodies).toEqual([API_PROBE_BODY]);
+  });
+
+  test("fails a server that accepts the connection and then dies mid-request", async () => {
+    // What a crash-on-first-real-request looks like from outside: the socket hangs.
+    const impl = (async () => {
+      throw Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" });
+    }) as unknown as FetchLike;
+
+    const result = await probeTarget(
+      "http://localhost:3000",
+      { path: "/api/graphql", kind: "api", method: "POST" },
+      impl,
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.detail).toContain("timeout");
   });
 });
 

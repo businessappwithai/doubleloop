@@ -99,6 +99,23 @@ export async function discoverApiRoutes(
     .sort();
 }
 
+/**
+ * The body an API probe POSTs.
+ *
+ * A minimal, VALID GraphQL query on purpose. The first version of this check sent `{}`, which every
+ * well-built route rejects at body validation — before it reads its configuration, opens a database
+ * connection, or runs a resolver. That made the probe prove only that *something* was listening on
+ * the path: a production server that died on every real request still passed, because the malformed
+ * body short-circuited ahead of the code that was broken.
+ *
+ * `{ __typename }` is the smallest query that is valid against any GraphQL schema, so it exercises
+ * the whole request path without depending on anything about the app's domain.
+ */
+export const API_PROBE_BODY = JSON.stringify({ query: "{ __typename }" });
+
+/** How long a single probe may take before it is treated as a failure. */
+export const PROBE_TIMEOUT_MS = 15_000;
+
 /** Builds the target list for a project: the root page plus every declared API route. */
 export async function buildSmokeTargets(
   workspaceDir: string,
@@ -125,7 +142,11 @@ export async function probeTarget(
     const response = await fetchImpl(`${appUrl}${target.path}`, {
       method: target.method ?? "GET",
       headers: { accept: "application/json, text/html" },
-      ...(target.method === "POST" ? { body: "{}" } : {}),
+      ...(target.method === "POST" ? { body: API_PROBE_BODY } : {}),
+      // A hung server is a failed server: without a deadline this waits forever on a process that
+      // accepted the connection and then died mid-request, which is exactly what a crash on first
+      // real request looks like from outside.
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     });
     status = response.status;
     body = await response.text();

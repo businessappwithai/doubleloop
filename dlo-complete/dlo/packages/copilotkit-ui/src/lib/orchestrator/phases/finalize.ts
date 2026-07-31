@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { mkdir, writeFile, readFile, readdir } from "node:fs/promises";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import {
   type PipelineState,
   getPipeline,
@@ -474,6 +474,67 @@ export function assessTestOutcome(rawOutput: string): TestOutcome {
   // No counted tests is itself the signal; an explicit "no test files found"
   // only confirms it. Either way the suite proved nothing.
   return { testsRun, noTestsFound: testsRun === 0 || reportedEmpty };
+}
+
+/**
+ * Reads a workspace's `.env` into a plain record. Returns `{}` when there is none.
+ *
+ * The deploy phase needs this because a generated app's `.env` is normally loaded by its *build
+ * tool* — for a Vite project, by the Vite config, which runs for `vite dev` and `vite preview` and
+ * not for `node dist/server/…`. Spawning the production build therefore handed it a process
+ * environment containing only what this phase passed explicitly, so the app's own required
+ * configuration was simply absent and it died on the first real request with
+ * `ConfigError: Invalid configuration for INSTANCE_ID: Required`.
+ *
+ * Deliberately a small parser, not dotenv: this reads a file the pipeline itself is deploying, and
+ * adding a dependency to the orchestrator for `KEY=VALUE` would be worse than the twelve lines
+ * below. Handles `export ` prefixes, `#` comments, blank lines, and single/double quoted values.
+ * Anything it cannot parse is skipped rather than guessed at.
+ */
+export function readWorkspaceEnvFile(
+  workspaceDir: string,
+  read: (p: string) => string = (p) => readFileSync(p, "utf-8"),
+): Record<string, string> {
+  let raw: string;
+  try {
+    raw = read(join(workspaceDir, ".env"));
+  } catch {
+    return {};
+  }
+  const out: Record<string, string> = {};
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed === "" || trimmed.startsWith("#")) continue;
+    const match = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(trimmed);
+    if (!match?.[1]) continue;
+    let value = (match[2] ?? "").trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"') && value.length >= 2) ||
+      (value.startsWith("'") && value.endsWith("'") && value.length >= 2)
+    ) {
+      value = value.slice(1, -1);
+    }
+    out[match[1]] = value;
+  }
+  return out;
+}
+
+/**
+ * The environment a launched app is given: the app's own `.env` first, then the real process
+ * environment, then the values this phase controls.
+ *
+ * That order is the point. A checked-out `.env` supplies what the app needs and nothing else knows
+ * (INSTANCE_ID, COLLAB_WS_URL, …); the real environment wins over it, so a container's or CI's
+ * configuration is never silently replaced by a file; and the pipeline's own `PORT` and
+ * `DATABASE_URL` win over both, because those are what this run actually provisioned.
+ */
+export function buildLaunchEnv(
+  workspaceDir: string,
+  processEnv: NodeJS.ProcessEnv,
+  overrides: Record<string, string>,
+  read?: (p: string) => string,
+): NodeJS.ProcessEnv {
+  return { ...readWorkspaceEnvFile(workspaceDir, read), ...processEnv, ...overrides };
 }
 
 /** What kind of production artifact a workspace holds, and how to serve it. */
@@ -1304,7 +1365,10 @@ export async function runDeployBackground(pipelineId: string, hasPermission: boo
       const entry = hasSrvxBuild ? ".dlo-serve.mjs" : ".output/server/index.mjs";
       const child = spawn("node", [entry], {
         cwd: state.workspaceDir,
-        env: { ...process.env, PORT: String(port), DATABASE_URL: state.dbConnectionString || "" },
+        env: buildLaunchEnv(state.workspaceDir, process.env, {
+          PORT: String(port),
+          ...(state.dbConnectionString ? { DATABASE_URL: state.dbConnectionString } : {}),
+        }),
         detached: true,
         stdio: "ignore",
       });
@@ -1325,7 +1389,10 @@ export async function runDeployBackground(pipelineId: string, hasPermission: boo
       }
       const child = spawn(launchCmd.cmd, launchCmd.args, {
         cwd: state.workspaceDir,
-        env: { ...process.env, DATABASE_URL: state.dbConnectionString || "", PORT: String(port) },
+        env: buildLaunchEnv(state.workspaceDir, process.env, {
+          PORT: String(port),
+          ...(state.dbConnectionString ? { DATABASE_URL: state.dbConnectionString } : {}),
+        }),
         detached: true,
         stdio: "ignore",
       });
