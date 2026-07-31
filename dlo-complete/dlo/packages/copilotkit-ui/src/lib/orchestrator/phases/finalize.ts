@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { mkdir, writeFile, readFile, readdir } from "node:fs/promises";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import {
   type PipelineState,
   getPipeline,
@@ -474,6 +474,58 @@ export function assessTestOutcome(rawOutput: string): TestOutcome {
   // No counted tests is itself the signal; an explicit "no test files found"
   // only confirms it. Either way the suite proved nothing.
   return { testsRun, noTestsFound: testsRun === 0 || reportedEmpty };
+}
+
+/** What kind of production artifact a workspace holds, and how to serve it. */
+export type ProductionBuild =
+  | { kind: "srvx"; entry: string }
+  | { kind: "nitro"; entry: string }
+  | { kind: "static"; dir: string };
+
+/**
+ * Finds the production build a workspace holds, or `null` when it has none.
+ *
+ * The srvx entry is **discovered**, not assumed. TanStack Start names the emitted server bundle
+ * after the project's configured `server.entry`, so a project whose entry is `ssr.tsx` builds
+ * `dist/server/ssr.js`, not `dist/server/server.js`. Checking only for the latter meant the deploy
+ * phase built a complete 2.7 MB production bundle, failed to recognise it, and silently launched
+ * the dev server instead — the artifact it had just spent 45 s producing went unused, and the gate
+ * told the operator it was starting a dev server with no hint that a production build existed.
+ *
+ * `server.js` is preferred when present (the default name); otherwise a single top-level `.js` in
+ * `dist/server/` is taken as the entry. Two or more candidates are treated as *not* a recognisable
+ * build rather than guessed at — picking the wrong entry would serve a broken app that looks
+ * deployed, which is worse than falling back to the dev server and saying so.
+ */
+export function detectProductionBuild(
+  workspaceDir: string,
+  exists: (p: string) => boolean = existsSync,
+  list: (p: string) => string[] = (p) => readdirSync(p),
+): ProductionBuild | null {
+  const serverDir = join(workspaceDir, "dist", "server");
+  if (exists(serverDir)) {
+    let entries: string[] = [];
+    try {
+      entries = list(serverDir).filter((name) => name.endsWith(".js"));
+    } catch {
+      entries = [];
+    }
+    const chosen =
+      entries.find((name) => name === "server.js") ?? (entries.length === 1 ? entries[0] : undefined);
+    if (chosen) {
+      return { kind: "srvx", entry: `dist/server/${chosen}` };
+    }
+  }
+
+  if (exists(join(workspaceDir, ".output", "server", "index.mjs"))) {
+    return { kind: "nitro", entry: ".output/server/index.mjs" };
+  }
+
+  if (exists(join(workspaceDir, "dist", "index.html"))) {
+    return { kind: "static", dir: "dist" };
+  }
+
+  return null;
 }
 
 /** Port used when a launch script does not pin one of its own and only `PORT` decides. */
@@ -1098,11 +1150,16 @@ export async function runTestingBackground(
  * default-exports a fetch handler, so we serve it with srvx and handle the
  * dist/client static assets ourselves.
  */
-const SRVX_BOOTSTRAP = `// DLO deploy bootstrap for TanStack Start (srvx build target).
+/**
+ * The bootstrap that serves a srvx-target build. Parameterised over the server entry because the
+ * emitted filename follows the project's configured `server.entry`, not a fixed name — see
+ * {@link detectProductionBuild}.
+ */
+const srvxBootstrap = (entryPath: string) => `// DLO deploy bootstrap for TanStack Start (srvx build target).
 import { serve } from "srvx";
 import { readFile, stat } from "node:fs/promises";
 import { join, extname } from "node:path";
-import server from "./dist/server/server.js";
+import server from "./${entryPath}";
 
 const CLIENT_DIR = join(process.cwd(), "dist/client");
 const TYPES = { ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".html": "text/html", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".json": "application/json", ".woff2": "font/woff2" };
@@ -1204,18 +1261,16 @@ export async function runDeployBackground(pipelineId: string, hasPermission: boo
     // TanStack Start production output: dist/server/server.js (srvx, current)
     // or .output/server/index.mjs (nitro, older). Classic Vite SPAs build a
     // static dist/ with an index.html.
-    const srvxEntry = join(state.workspaceDir, "dist/server/server.js");
-    const nitroEntry = join(state.workspaceDir, ".output/server/index.mjs");
-    const distDir = join(state.workspaceDir, "dist");
-    const hasSrvxBuild = existsSync(srvxEntry);
-    const hasNitroBuild = !hasSrvxBuild && existsSync(nitroEntry);
-    const hasStaticBuild = !hasSrvxBuild && !hasNitroBuild && existsSync(join(distDir, "index.html"));
-    const hasProdBuild = hasSrvxBuild || hasNitroBuild || hasStaticBuild;
+    const prodBuild = detectProductionBuild(state.workspaceDir);
+    const hasSrvxBuild = prodBuild?.kind === "srvx";
+    const hasNitroBuild = prodBuild?.kind === "nitro";
+    const hasStaticBuild = prodBuild?.kind === "static";
+    const hasProdBuild = prodBuild !== null;
     const port = launchCmd.port;
     const appUrl = `http://localhost:${port}`;
 
     const deployCommands = hasSrvxBuild
-      ? [`cd ${state.workspaceDir}`, `PORT=${port} node .dlo-serve.mjs  # srvx bootstrap for dist/server/server.js`, `# Production app → ${appUrl}`]
+      ? [`cd ${state.workspaceDir}`, `PORT=${port} node .dlo-serve.mjs  # srvx bootstrap for ${prodBuild?.kind === "srvx" ? prodBuild.entry : ""}`, `# Production app → ${appUrl}`]
       : hasNitroBuild
       ? [`cd ${state.workspaceDir}`, `PORT=${port} node .output/server/index.mjs`, `# Production app → ${appUrl}`]
       : hasStaticBuild
@@ -1239,11 +1294,11 @@ export async function runDeployBackground(pipelineId: string, hasPermission: boo
       return;
     }
 
-    if (hasSrvxBuild) {
-      // dist/server/server.js is a fetch-handler module (srvx build target),
-      // not a self-starting server — write a bootstrap that serves it plus
-      // the dist/client static assets.
-      await writeFile(join(state.workspaceDir, ".dlo-serve.mjs"), SRVX_BOOTSTRAP, "utf-8");
+    if (prodBuild?.kind === "srvx") {
+      // The emitted server bundle is a fetch-handler module (srvx build target), not a
+      // self-starting server — write a bootstrap that serves it plus the dist/client assets.
+      // Its filename follows the project's configured server.entry, so it comes from detection.
+      await writeFile(join(state.workspaceDir, ".dlo-serve.mjs"), srvxBootstrap(prodBuild.entry), "utf-8");
     }
     if (hasSrvxBuild || hasNitroBuild) {
       const entry = hasSrvxBuild ? ".dlo-serve.mjs" : ".output/server/index.mjs";
